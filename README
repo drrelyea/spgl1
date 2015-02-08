@@ -1,0 +1,89 @@
+SPGL1: Spectral Projected Gradient for L1 minimization
+------------------------------------------------------
+
+1. Introduction
+===============
+
+Thank you for downloading the SPGL1 solver!  SPGL1 is a python (or Matlab) solver
+for large-scale one-norm regularized least squares.  It is designed to
+solve any of the following three problems:
+
+1. Basis pursuit denoise (BPDN):
+   minimize  ||x||_1  subject to  ||Ax - b||_2 <= sigma,
+
+2. Basis pursuit (BP):
+   minimize   ||x||_1  subject to  Ax = b
+ 
+3. Lasso:
+   minimize  ||Ax - b||_2  subject to  ||x||_1 <= tau,
+
+The matrix A can be defined explicily, or as an operator (i.e., a
+function) that return both both Ax and A'y.  SPGL1 can solve these
+three problems in both the real and complex domains.
+
+Original home page: http://www.cs.ubc.ca/labs/scl/spgl1/
+
+Code ported by David Relyea (drrelyea@gmail.com). Direct kudos to that address.
+For any questions and concerns, also use that address.
+For blame, hostility, or general ill will, contact your local representative.
+You could also try to reach a senator, but they have better safeguards against that sort of thing.
+
+2. Quick start
+==============
+
+I haven’t written a quick start for the python. It should be as simple as importing
+everything and running it. I’ll write a real quick start soon enough.
+For now, assume that all running is entirely analogous with Matlab’s version.
+
+If you understand Matlab, then you can look at their spgdemo script and follow that.
+
+If not, then go to their webpage and look at their examples and google the parts you
+don’t understand.
+
+If you can’t read, then I can say anything about you and you won’t even understand. You lemon-stealing salamander.
+
+Start Matlab and make sure the working directory is set to the
+directory containing the SPGL1 source files. When this is done, run
+
+ >> spgdemo
+
+at the Matlab prompt.  This script illustrates various uses of SPGL1:
+
+- Solve (BPDN) for some sigma > 0
+- Solve (Lasso)
+- Solve (BP)
+- Solve a (BP) problem in complex variables
+- Sample the entire Pareto frontier (i.e., ||Ax-b||_2 vs ||x||_1)
+  for a small test problem.
+
+
+3. Installation
+===============
+
+3.01 python
+------------------
+
+This entire codebase was ported in a few nights to python. It requires
+both python and numpy, which you have on your computer. If you’ve
+managed to get to this point and you don’t have numpy, you are a
+unique individual. Go get numpy.
+
+3.1  C interface
+------------------
+
+I have not yet coded up C versions of the core routines, so this code runs a little slowly. I’ll do that soon. For now, appreciate that it exists, I guess.
+
+
+4. References
+=============
+
+The algorithm implemented by SPGL1 is described in the paper
+
+- E. van den Berg and M. P. Friedlander, "Probing the Pareto frontier
+  for basis pursuit solutions", SIAM J. on Scientific Computing,
+  31(2):890-912, November 2008
+
+- Sparse optimization with least-squares constraints E. van den Berg
+  and M. P. Friedlander, Tech. Rep. TR-2010-02, Dept of Computer
+  Science, Univ of British Columbia, January 2010
+
