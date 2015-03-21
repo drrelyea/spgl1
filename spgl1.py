@@ -276,7 +276,7 @@ def spgl1( A, b, tau=[], sigma=[], x=[], options=[] ):
     #% Determine initial x, vector length n, and see if problem is complex
     from inspect import isfunction
     explicit = not isfunction(A)
-    if not x:
+    if x==[]:
         if explicit:
             n = np.shape(A)[1]
             realx = np.lib.isreal(A).all() and np.lib.isreal(b).all()
