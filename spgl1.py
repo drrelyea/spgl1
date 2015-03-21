@@ -537,8 +537,8 @@ def spgl1( A, b, tau=[], sigma=[], x=[], options=[] ):
                     stat = EXIT_LINE_ERROR
                 else:
                     stepMax = stepMax / 10.;
-                    print("W: Linesearch failed with error "+lnErr+\
-                          "Damping max BB scaling to "+stepMax);
+                    print("W: Linesearch failed with error "+str(lnErr)+\
+                          "Damping max BB scaling to "+str(stepMax));
                     maxLineErrors = maxLineErrors - 1;
 
            #%---------------------------------------------------------------
@@ -645,7 +645,7 @@ def spgl1( A, b, tau=[], sigma=[], x=[], options=[] ):
     #% Restore best solution (only if solving single problem).
     if singleTau and f > fBest:
         rNorm = np.sqrt(2.*fBest)
-        print('Restoring best iterrate to objective '+rNorm)
+        print('Restoring best iterrate to objective '+str(rNorm))
         x = xBest.copy()
         r = b - Aprod(x,1)
         g =   - Aprod(r,2)
