@@ -26,19 +26,9 @@ For blame, hostility, or general ill will, contact your local government represe
 2. Quick start
 ==============
 
-I haven’t written a quick start for the python. It should be as simple as importing everything and running it. I’ll write a real quick start soon enough. For now, assume that all running is entirely analogous with Matlab’s version.
+Run the spgldemoo.py in a python shell. You need numpy and matplotlib and scipy.
 
-If you understand Matlab, then you can look at their spgdemo script and follow that.
-
-If not, then go to their webpage and look at their examples and google the parts you don’t understand.
-
-If you can’t read, then I can say anything about you and you won’t even understand. You lemon-stealing salamander.
-
-Start Matlab and make sure the working directory is set to the directory containing the SPGL1 source files. When this is done, run
-
- >> spgdemo
-
-at the Matlab prompt.  This script illustrates various uses of SPGL1:
+This script illustrates various uses of SPGL1:
 
 - Solve (BPDN) for some sigma > 0
 - Solve (Lasso)
@@ -46,7 +36,6 @@ at the Matlab prompt.  This script illustrates various uses of SPGL1:
 - Solve a (BP) problem in complex variables
 - Sample the entire Pareto frontier (i.e., ||Ax-b||_2 vs ||x||_1)
   for a small test problem.
-
 
 3. Installation
 ===============
