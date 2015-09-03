@@ -144,7 +144,7 @@ def NormL1NN_primal(x,weights):
 
     p = np.linalg.norm(x*weights,1)
     if any(x < 0):
-        p = Inf
+        p = np.inf
     return p
 
 def NormL12_primal(g,x,weights):
@@ -162,22 +162,22 @@ def NormL12_dual(g,x,weights):
     n = g
 
     if all(np.isreal(x)):
-        return np.linalg.norm(np.sqrt(sum(reshape(x,m,n)**2,axis=1))/weights,inf)
+        return np.linalg.norm(np.sqrt(sum(reshape(x,m,n)**2,axis=1))/weights,np.inf)
     else:
-        return np.linalg.norm(np.sqrt(sum(abs(reshape(x,m,n))**2,axis=1))/weights,inf)
+        return np.linalg.norm(np.sqrt(sum(abs(reshape(x,m,n))**2,axis=1))/weights,np.inf)
 
 def NormGroupL2_dual(groups,x,weights):
 
     if isreal(x):
-        return np.linalg.norm(np.sqrt(sum(groups * x**2,axis=1))/weights,inf)
+        return np.linalg.norm(np.sqrt(sum(groups * x**2,axis=1))/weights,np.inf)
     else:
-        return np.linalg.norm(np.sqrt(sum(groups * abs(x)**2,axis=1))/weights,inf)
+        return np.linalg.norm(np.sqrt(sum(groups * abs(x)**2,axis=1))/weights,np.inf)
 
 def NormL1NN_dual(x,weights):
 # % Dual of non-negative L1 gauge function
     xx = x.copy()
     xx[xx<0]=0
-    return np.linalg.norm(xx/weights,inf)
+    return np.linalg.norm(xx/weights,np.inf)
 
 def spgLineCurvy(x,g,fMax,Aprod,b,spglproject,weights,tau):
 
