@@ -649,7 +649,7 @@ def spgl1( A, b, tau=[], sigma=[], x=[], options=[] ):
         x = xBest.copy()
         r = b - Aprod(x,1)
         g =   - Aprod(r,2)
-        gNorm = options.dual_norm(g,weights)
+        gNorm = options['dual_norm'](g,weights)
         rNorm = np.linalg.norm(r)
 
     #% Final cleanup before exit.
