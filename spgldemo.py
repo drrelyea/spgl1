@@ -5,36 +5,36 @@ from matplotlib.mlab import find
 from matplotlib.pyplot import *
 from scipy.sparse import spdiags
 
-def spgldemoo():
-# %DEMO  Demonstrates the use of the SPGL1 solver
-# %
-# % See also SPGL1.
-
-# %   demo.m
-# %   $Id: spgdemo.m 1079 2008-08-20 21:34:15Z ewout78 $
-# %
-# %   ----------------------------------------------------------------------
-# %   This file is part of SPGL1 (Spectral Projected Gradient for L1).
-# %
-# %   Copyright (C) 2007 Ewout van den Berg and Michael P. Friedlander,
-# %   Department of Computer Science, University of British Columbia, Canada.
-# %   All rights reserved. E-mail: <{ewout78,mpf}@cs.ubc.ca>.
-# %
-# %   SPGL1 is free software; you can redistribute it and/or modify it
-# %   under the terms of the GNU Lesser General Public License as
-# %   published by the Free Software Foundation; either version 2.1 of the
-# %   License, or (at your option) any later version.
-# %
-# %   SPGL1 is distributed in the hope that it will be useful, but WITHOUT
-# %   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-# %   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General
-# %   Public License for more details.
-# %
-# %   You should have received a copy of the GNU Lesser General Public
-# %   License along with SPGL1; if not, write to the Free Software
-# %   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
-# %   USA
-# %   ----------------------------------------------------------------------
+if __name__ == '__main__':
+    # %DEMO  Demonstrates the use of the SPGL1 solver
+    # %
+    # % See also SPGL1.
+    
+    # %   demo.m
+    # %   $Id: spgdemo.m 1079 2008-08-20 21:34:15Z ewout78 $
+    # %
+    # %   ----------------------------------------------------------------------
+    # %   This file is part of SPGL1 (Spectral Projected Gradient for L1).
+    # %
+    # %   Copyright (C) 2007 Ewout van den Berg and Michael P. Friedlander,
+    # %   Department of Computer Science, University of British Columbia, Canada.
+    # %   All rights reserved. E-mail: <{ewout78,mpf}@cs.ubc.ca>.
+    # %
+    # %   SPGL1 is free software; you can redistribute it and/or modify it
+    # %   under the terms of the GNU Lesser General Public License as
+    # %   published by the Free Software Foundation; either version 2.1 of the
+    # %   License, or (at your option) any later version.
+    # %
+    # %   SPGL1 is distributed in the hope that it will be useful, but WITHOUT
+    # %   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    # %   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General
+    # %   Public License for more details.
+    # %
+    # %   You should have received a copy of the GNU Lesser General Public
+    # %   License along with SPGL1; if not, write to the Free Software
+    # %   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
+    # %   USA
+    # %   ----------------------------------------------------------------------
 
     # % Initialize random number generators
     np.random.seed(43273289)
@@ -413,3 +413,4 @@ def spgldemoo():
     # print([repmat('-',1,35), ' Solution ', repmat('-',1,35), '\n']);
     # print('See figure 1(g).\n');
     # print([repmat('-',1,80), '\n']);
+    show()
