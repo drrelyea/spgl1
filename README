@@ -26,7 +26,7 @@ For blame, hostility, or general ill will, contact your local government represe
 2. Quick start
 ==============
 
-Run the spgldemoo.py in a python shell. You need numpy and matplotlib and scipy.
+Run the spgldemo.py in a python shell. You need numpy and matplotlib and scipy.
 
 This script illustrates various uses of SPGL1:
 

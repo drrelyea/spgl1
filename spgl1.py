@@ -1,31 +1,10 @@
-# def fakeFourier(idx,n,x,mode):
-#     # %PARTIALFOURIER  Partial Fourier operator
-#     # %
-#     # % Y = PARTIALFOURIER(IDX,N,X,MODE)
-
-#     if mode==1:
-#         z = np.fft.fft(x) / np.sqrt(n)
-#         return z[idx].flatten()
-#     else:
-#         z = np.zeros(n,dtype=complex)
-#         z[idx] = x
-#         return np.fft.ifft(z) * np.sqrt(n)
-
-
-# m=50
-# n=128
-# k=14
-# A,Rtmp = qr(np.random.randn(n,m))
-# A=A.T
-# p = permutation(n)
-# p=p[0:k]
-# x0=zeros(n)
-# x0[p]=random.randn(k)
-# b=dot(A,x0)
-
-from lsqr import *
-from spgl_aux import *
+from __future__ import division
 import numpy as np
+from inspect import isfunction
+from lsqr import *
+from spgl_aux import NormL12_project, NormL12_primal, NormL12_dual, \
+                     NormL1_project,  NormL1_primal,  NormL1_dual, \
+                     spgSetParms, activeVars, spgLineCurvy, spgLine, reshape_rowwise
 
 def Aprodprelambda(A,x,mode):
     from inspect import isfunction
@@ -832,3 +811,69 @@ def spg_lasso(A,b,tau,options=[] ):
     sigma = 0
     x0  = []
     return spgl1(A,b,tau,sigma,x0,options)
+
+
+
+def spg_mmv(A, B, sigma=0, options=[]):
+    groups = B.shape[1]
+
+    if isfunction(A):
+        raise NotImplementedError()     # implement blockDiagonalImplicit
+    else:
+        m = A.shape[0]
+        n = A.shape[1]
+        A_fh = lambda x, mode: blockDiagonalExplicit(A, m, n, groups, x, mode)
+
+    # Set projection specific functions
+    options['project']     = lambda x, weight, tau: NormL12_project(groups, x, weight, tau)
+    options['primal_norm'] = lambda x, weight:      NormL12_primal(groups, x, weight)
+    options['dual_norm']   = lambda x, weight:      NormL12_dual(groups, x, weight)
+
+    tau = 0
+    x0  = []
+    x, r, g, info = spgl1(A_fh, B.flatten(1), tau, sigma, x0, options)
+
+    n = np.round(x.shape[0] / groups)
+    m = B.shape[0]
+    x = reshape_rowwise(x, n, groups)
+    g = reshape_rowwise(g, n, groups)
+
+    return x, r, g, info
+
+def blockDiagonalExplicit(A, m, n, g, x, mode):
+    if mode == 1:
+       x = reshape_rowwise(x, n, g)
+       y = A.dot(x)
+       y = y.flatten(1)
+    else:
+       x = reshape_rowwise(x, m, g)
+       y = np.dot(x.conj().transpose(), A).conj().transpose()
+       y = y.flatten(1)
+    return y
+
+
+
+# def fakeFourier(idx,n,x,mode):
+#     # %PARTIALFOURIER  Partial Fourier operator
+#     # %
+#     # % Y = PARTIALFOURIER(IDX,N,X,MODE)
+
+#     if mode==1:
+#         z = np.fft.fft(x) / np.sqrt(n)
+#         return z[idx].flatten()
+#     else:
+#         z = np.zeros(n,dtype=complex)
+#         z[idx] = x
+#         return np.fft.ifft(z) * np.sqrt(n)
+
+
+# m=50
+# n=128
+# k=14
+# A,Rtmp = qr(np.random.randn(n,m))
+# A=A.T
+# p = permutation(n)
+# p=p[0:k]
+# x0=zeros(n)
+# x0[p]=random.randn(k)
+# b=dot(A,x0)
