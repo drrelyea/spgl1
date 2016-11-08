@@ -1,40 +1,41 @@
-from spgl1 import *
-from spgl_aux import *
+from __future__ import division
+from spgl1 import spgl1, spg_lasso, spg_bp, spg_bpdn, spg_mmv
+from spgl1.spgl_aux import spgSetParms
 import numpy as np
 from matplotlib.mlab import find
-from matplotlib.pyplot import *
+from matplotlib.pyplot import figure, plot, hold, title, legend, xlabel, ylabel, show
 from scipy.sparse import spdiags
 
-def spgldemoo():
-# %DEMO  Demonstrates the use of the SPGL1 solver
-# %
-# % See also SPGL1.
-
-# %   demo.m
-# %   $Id: spgdemo.m 1079 2008-08-20 21:34:15Z ewout78 $
-# %
-# %   ----------------------------------------------------------------------
-# %   This file is part of SPGL1 (Spectral Projected Gradient for L1).
-# %
-# %   Copyright (C) 2007 Ewout van den Berg and Michael P. Friedlander,
-# %   Department of Computer Science, University of British Columbia, Canada.
-# %   All rights reserved. E-mail: <{ewout78,mpf}@cs.ubc.ca>.
-# %
-# %   SPGL1 is free software; you can redistribute it and/or modify it
-# %   under the terms of the GNU Lesser General Public License as
-# %   published by the Free Software Foundation; either version 2.1 of the
-# %   License, or (at your option) any later version.
-# %
-# %   SPGL1 is distributed in the hope that it will be useful, but WITHOUT
-# %   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-# %   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General
-# %   Public License for more details.
-# %
-# %   You should have received a copy of the GNU Lesser General Public
-# %   License along with SPGL1; if not, write to the Free Software
-# %   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
-# %   USA
-# %   ----------------------------------------------------------------------
+if __name__ == '__main__':
+    # %DEMO  Demonstrates the use of the SPGL1 solver
+    # %
+    # % See also SPGL1.
+    
+    # %   demo.m
+    # %   $Id: spgdemo.m 1079 2008-08-20 21:34:15Z ewout78 $
+    # %
+    # %   ----------------------------------------------------------------------
+    # %   This file is part of SPGL1 (Spectral Projected Gradient for L1).
+    # %
+    # %   Copyright (C) 2007 Ewout van den Berg and Michael P. Friedlander,
+    # %   Department of Computer Science, University of British Columbia, Canada.
+    # %   All rights reserved. E-mail: <{ewout78,mpf}@cs.ubc.ca>.
+    # %
+    # %   SPGL1 is free software; you can redistribute it and/or modify it
+    # %   under the terms of the GNU Lesser General Public License as
+    # %   published by the Free Software Foundation; either version 2.1 of the
+    # %   License, or (at your option) any later version.
+    # %
+    # %   SPGL1 is distributed in the hope that it will be useful, but WITHOUT
+    # %   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    # %   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General
+    # %   Public License for more details.
+    # %
+    # %   You should have received a copy of the GNU Lesser General Public
+    # %   License along with SPGL1; if not, write to the Free Software
+    # %   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
+    # %   USA
+    # %   ----------------------------------------------------------------------
 
     # % Initialize random number generators
     np.random.seed(43273289)
@@ -282,60 +283,57 @@ def spgldemoo():
     # %
     # % followed by setting Y = WX.
     # % -----------------------------------------------------------
-    # print(['%% ', repmat('-',1,78), '\n']);
-    # print('%% Solve the multiple measurement vector (MMV) problem      \n');
-    # print('%%                                                          \n');
-    # print('%% (1) minimize ||Y||_1,2 subject to AW^{-1}Y = B           \n');
-    # print('%%                                                          \n');
-    # print('%% and the weighted MMV problem (weights on the rows of X): \n');
-    # print('%%                                                          \n');
-    # print('%% (2) minimize ||WX||_1,2 subject to AX = B                \n');
-    # print('%%                                                          \n');
-    # print('%% followed by setting Y = WX.                              \n');
-    # print(['%% ', repmat('-',1,78), '\n']);
+    print('%s ' % ('-'*78))
+    print('Solve the multiple measurement vector (MMV) problem      ')
+    print('                                                         ')
+    print('(1) minimize ||Y||_1,2 subject to AW^{-1}Y = B           ')
+    print('                                                         ')
+    print('and the weighted MMV problem (weights on the rows of X): ')
+    print('                                                         ')
+    print('(2) minimize ||WX||_1,2 subject to AX = B                ')
+    print('                                                         ')
+    print('followed by setting Y = WX.                              ')
+    print('%s ' % ('-'*78))
 
-    # print('\nPress <return> to continue ... \n');
-    # if interactive, pause; end
+    # Create problem
+    m = 100
+    n = 150
+    k = 12
+    l = 6;
+    A = np.random.randn(m, n)
+    p = np.random.permutation(n)[:k]
+    X0 = np.zeros((n, l))
+    X0[p, :] = np.random.randn(k, l)
 
-    # % Initialize random number generator
-    # randn('state',0); rand('state',0);
+    weights = 3 * np.random.rand(n) + 0.1
+    W = 1/weights * np.eye(n)
 
-    # % Create problem
-    # m = 100; n = 150; k = 12; l = 6;
-    # A = randn(m,n);
-    # p = randperm(n); p = p(1:k);
-    # X0= zeros(n,l); X0(p,:) = randn(k,l);
+    B = A.dot(W).dot(X0)
 
-    # weights = 3 * rand(n,1) + 0.1;
-    # W = spdiags(1./weights,0,n,n);
+    # Solve unweighted version
+    opts = spgSetParms({'verbosity': 1})
+    x_uw, _, _, _ = spg_mmv(A.dot(W), B, 0, opts)
 
-    # B = A*W*X0;
+    # Solve weighted version
+    opts = spgSetParms({'verbosity': 1,
+                        'weights': weights})
+    x_w, _, _, _ = spg_mmv(A, B, 0, opts)
+    x_w = spdiags(weights, 0, n, n).dot(x_w)
 
-    # % Solve unweighted version
-    # opts = spgSetParms('verbosity',1);
-    # x    = spg_mmv(A*W,B,0,opts);
-    # x1   = x;
+    # Plot results
+    figure()
+    plot(x_uw[:, 0], 'b-')
+    plot(x_w[:, 0], 'b.')
+    plot(X0, 'ro');
+    plot(x_uw[:, 1:], '-')
+    plot(x_w[:, 1:], 'b.')
+    #legend('Coefficients (1)','Coefficients (2)','Original coefficients');
+    title('(f) Weighted Basis Pursuit with Multiple Measurement Vectors');
 
-    # % Solve weighted version
-    # opts = spgSetParms('verbosity',1,'weights',weights);
-    # x    = spg_mmv(A,B,0,opts);
-    # x2   = spdiags(weights,0,n,n) * x;
+    print('%s%s%s' % ('-'*35,' Solution ','-'*35))
+    print('See figure 1(f).');
+    print('%s ' % ('-'*78))
 
-    # % Plot results
-    # figure(1); subplot(2,4,6);
-    # plot(x1(:,1),'b-'); hold on;
-    # plot(x2(:,1),'b.');
-    # plot(X0,'ro');
-    # plot(x1(:,2:end),'-');
-    # plot(x2(:,2:end),'b.');
-    # legend('Coefficients (1)','Coefficients (2)','Original coefficients');
-    # title('(f) Weighted Basis Pursuit with Multiple Measurement Vectors');
-
-    # print('\n');
-    # print([repmat('-',1,35), ' Solution ', repmat('-',1,35), '\n']);
-    # print('See figure 1(f).\n');
-    # print([repmat('-',1,80), '\n']);
-    # print('\n\n');
 
 
     # % -----------------------------------------------------------
@@ -413,3 +411,4 @@ def spgldemoo():
     # print([repmat('-',1,35), ' Solution ', repmat('-',1,35), '\n']);
     # print('See figure 1(g).\n');
     # print([repmat('-',1,80), '\n']);
+    show()
