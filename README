@@ -36,9 +36,21 @@ This script illustrates various uses of SPGL1:
 - Solve a (BP) problem in complex variables
 - Sample the entire Pareto frontier (i.e., ||Ax-b||_2 vs ||x||_1)
   for a small test problem.
+- Solve multiple measurement vector problem (MMV)
 
 3. Installation
 ===============
+
+    $ cd SPGL1_python_port
+
+and install systemwide with
+
+    $ sudo pip install -e .
+
+or as user into your home directory with
+
+    $ pip install --user -e .
+
 
 3.01 python
 ------------------
