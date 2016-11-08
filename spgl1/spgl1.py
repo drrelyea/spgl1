@@ -1,10 +1,10 @@
-from __future__ import division
+from __future__ import division, absolute_import
 import numpy as np
 from inspect import isfunction
-from lsqr import *
-from spgl_aux import NormL12_project, NormL12_primal, NormL12_dual, \
-                     NormL1_project,  NormL1_primal,  NormL1_dual, \
-                     spgSetParms, activeVars, spgLineCurvy, spgLine, reshape_rowwise
+from spgl1.lsqr import lsqr
+from spgl1.spgl_aux import NormL12_project, NormL12_primal, NormL12_dual, \
+                           NormL1_project,  NormL1_primal,  NormL1_dual, \
+                           spgSetParms, activeVars, spgLineCurvy, spgLine, reshape_rowwise
 
 def Aprodprelambda(A,x,mode):
     from inspect import isfunction

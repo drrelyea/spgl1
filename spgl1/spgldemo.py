@@ -1,6 +1,6 @@
 from __future__ import division
 from spgl1 import spgl1, spg_lasso, spg_bp, spg_bpdn, spg_mmv
-from spgl_aux import spgSetParms
+from spgl1.spgl_aux import spgSetParms
 import numpy as np
 from matplotlib.mlab import find
 from matplotlib.pyplot import figure, plot, hold, title, legend, xlabel, ylabel, show

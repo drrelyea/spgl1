@@ -1,3 +1,4 @@
+from __future__ import division
 import numpy as np
 
 def lsqr( m, n, A, b, damp, atol, btol, conlim, itnlim, show ):
