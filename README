@@ -41,15 +41,15 @@ This script illustrates various uses of SPGL1:
 3. Installation
 ===============
 
-    $ cd SPGL1_python_port
+$ cd SPGL1_python_port
 
 and install systemwide with
 
-    $ sudo pip install -e .
+$ sudo pip install -e .
 
 or as user into your home directory with
 
-    $ pip install --user -e .
+$ pip install --user -e .
 
 
 3.01 python

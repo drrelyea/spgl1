@@ -19,7 +19,7 @@ def Aprodprelambda(A,x,mode):
         else:
             return A(x,2)
 
-def spgl1( A, b, tau=[], sigma=[], x=[], options=[] ):
+def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
 # %SPGL1  Solve basis pursuit, basis pursuit denoise, and LASSO
 # %
 # % [x, r, g, info] = spgl1(A, b, tau, sigma, x0, options)
@@ -690,7 +690,7 @@ def spgl1( A, b, tau=[], sigma=[], x=[], options=[] ):
 
 
 
-def spg_bp(A,b,options=[] ):
+def spg_bp(A, b, options={}):
 # %SPG_BP  Solve the basis pursuit (BP) problem
 # %
 # %   SPG_BP is designed to solve the basis pursuit problem
@@ -733,7 +733,7 @@ def spg_bp(A,b,options=[] ):
     return x,r,g,info
 
 
-def spg_bpdn( A, b, sigma, options=[] ):
+def spg_bpdn(A, b, sigma, options={}):
 # %SPG_BPDN  Solve the basis pursuit denoise (BPDN) problem
 # %
 # %   SPG_BPDN is designed to solve the basis pursuit denoise problem
@@ -774,7 +774,7 @@ def spg_bpdn( A, b, sigma, options=[] ):
     return spgl1(A,b,tau,sigma,x0,options)
 
 
-def spg_lasso(A,b,tau,options=[] ):
+def spg_lasso(A, b, tau, options={}):
     # %SPG_LASSO  Solve the LASSO problem
     # %
     # %   SPG_LASSO is designed to solve the LASSO problem
@@ -813,8 +813,7 @@ def spg_lasso(A,b,tau,options=[] ):
     return spgl1(A,b,tau,sigma,x0,options)
 
 
-
-def spg_mmv(A, B, sigma=0, options=[]):
+def spg_mmv(A, B, sigma=0, options={}):
     groups = B.shape[1]
 
     if isfunction(A):
