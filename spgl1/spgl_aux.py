@@ -78,7 +78,7 @@ def spgSetParms(inputdictionary):
     return options
 
 def reshape_rowwise(arr, m, n):
-    return arr.reshape(n, m).transpose()
+    return arr.reshape(m, n, order='F')
 
 # NOT OPTIMIZED
 def NormL12_project(g,x,weights,tau):
