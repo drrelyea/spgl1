@@ -1,10 +1,13 @@
 from __future__ import division, absolute_import
 import numpy as np
 from inspect import isfunction
+import logging
 from spgl1.lsqr import lsqr
 from spgl1.spgl_aux import NormL12_project, NormL12_primal, NormL12_dual, \
                            NormL1_project,  NormL1_primal,  NormL1_dual, \
                            spgSetParms, activeVars, spgLineCurvy, spgLine, reshape_rowwise
+
+logger = logging.getLogger(__name__)
 
 def Aprodprelambda(A,x,mode):
     from inspect import isfunction
@@ -525,8 +528,7 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
                     stat = EXIT_LINE_ERROR
                 else:
                     stepMax = stepMax / 10.;
-                    print("W: Linesearch failed with error "+str(lnErr)+\
-                          "Damping max BB scaling to "+str(stepMax));
+                    logger.warning('Linesearch failed with error %s. Damping max BB scaling to %s', lnErr, stepMax)
                     maxLineErrors = maxLineErrors - 1;
 
            #%---------------------------------------------------------------
