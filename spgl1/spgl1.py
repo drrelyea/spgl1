@@ -166,6 +166,8 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
     # REVISION = REVISION(11:end-1);
     # DATE     = DATE(35:50);
 
+    allocSize = 10000   # size of info vector pre-allocation
+
     def betterAprod(A): return lambda x,mode: Aprodprelambda(A,x,mode)
 
     Aprod = betterAprod(A)
@@ -299,9 +301,9 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
         subspaceMin = False
 
     #% Pre-allocate iteration info vectors
-    xNorm1  = np.zeros(min(maxIts,10000))
-    rNorm2  = np.zeros(min(maxIts,10000))
-    lambdaa = np.zeros(min(maxIts,10000))
+    xNorm1  = np.zeros(min(maxIts, allocSize))
+    rNorm2  = np.zeros(min(maxIts, allocSize))
+    lambdaa = np.zeros(min(maxIts, allocSize))
 
     #% Exit conditions (constants).
     EXIT_ROOT_FOUND    = 1
@@ -474,7 +476,14 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
         printTau = False
         subspace = False
 
-        #% Update history info
+        # Update history info
+        if iterr > 0 and iterr % allocSize == 0:    # enlarge allocation
+            allocIncrement = min(allocSize, maxIts-xNorm1.shape[0])
+            xNorm1 = np.hstack((xNorm1, np.zeros(allocIncrement)))
+            rNorm2 = np.hstack((rNorm2, np.zeros(allocIncrement)))
+            lambdaa = np.hstack((lambdaa, np.zeros(allocIncrement)))
+
+
         xNorm1[iterr] = options['primal_norm'](x,weights)
         rNorm2[iterr] = rNorm
         lambdaa[iterr] = gNorm
