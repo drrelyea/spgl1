@@ -1,9 +1,13 @@
 from __future__ import division, absolute_import
+import logging
 import numpy as np
 from scipy.sparse import spdiags
 from matplotlib.mlab import find
 from matplotlib.pyplot import figure, plot, hold, title, legend, xlabel, ylabel, show
 from spgl1 import spgl1, spg_lasso, spg_bp, spg_bpdn, spg_mmv, spgSetParms
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     # %DEMO  Demonstrates the use of the SPGL1 solver

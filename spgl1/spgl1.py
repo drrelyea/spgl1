@@ -1,10 +1,13 @@
 from __future__ import division, absolute_import
 import numpy as np
 from inspect import isfunction
+import logging
 from spgl1.lsqr import lsqr
 from spgl1.spgl_aux import NormL12_project, NormL12_primal, NormL12_dual, \
                            NormL1_project,  NormL1_primal,  NormL1_dual, \
                            spgSetParms, activeVars, spgLineCurvy, spgLine, reshape_rowwise
+
+logger = logging.getLogger(__name__)
 
 def Aprodprelambda(A,x,mode):
     from inspect import isfunction
@@ -166,6 +169,8 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
     # REVISION = REVISION(11:end-1);
     # DATE     = DATE(35:50);
 
+    allocSize = 10000   # size of info vector pre-allocation
+
     def betterAprod(A): return lambda x,mode: Aprodprelambda(A,x,mode)
 
     Aprod = betterAprod(A)
@@ -299,9 +304,9 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
         subspaceMin = False
 
     #% Pre-allocate iteration info vectors
-    xNorm1  = np.zeros(min(maxIts,10000))
-    rNorm2  = np.zeros(min(maxIts,10000))
-    lambdaa = np.zeros(min(maxIts,10000))
+    xNorm1  = np.zeros(min(maxIts, allocSize))
+    rNorm2  = np.zeros(min(maxIts, allocSize))
+    lambdaa = np.zeros(min(maxIts, allocSize))
 
     #% Exit conditions (constants).
     EXIT_ROOT_FOUND    = 1
@@ -474,7 +479,14 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
         printTau = False
         subspace = False
 
-        #% Update history info
+        # Update history info
+        if iterr > 0 and iterr % allocSize == 0:    # enlarge allocation
+            allocIncrement = min(allocSize, maxIts-xNorm1.shape[0])
+            xNorm1 = np.hstack((xNorm1, np.zeros(allocIncrement)))
+            rNorm2 = np.hstack((rNorm2, np.zeros(allocIncrement)))
+            lambdaa = np.hstack((lambdaa, np.zeros(allocIncrement)))
+
+
         xNorm1[iterr] = options['primal_norm'](x,weights)
         rNorm2[iterr] = rNorm
         lambdaa[iterr] = gNorm
@@ -516,8 +528,7 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
                     stat = EXIT_LINE_ERROR
                 else:
                     stepMax = stepMax / 10.;
-                    print("W: Linesearch failed with error "+str(lnErr)+\
-                          "Damping max BB scaling to "+str(stepMax));
+                    logger.warning('Linesearch failed with error %s. Damping max BB scaling to %s', lnErr, stepMax)
                     maxLineErrors = maxLineErrors - 1;
 
            #%---------------------------------------------------------------
