@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from distutils.core import setup
 
 setup(
     name='spgl1',
@@ -12,5 +12,5 @@ setup(
         'setuptools',
         'numpy',
         ],
-    packages=find_packages(),
+    packages=['spgl1'],
     )
