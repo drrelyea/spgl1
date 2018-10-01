@@ -217,7 +217,10 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
     'dual_norm'  : NormL1_dual
        })
     options = spgSetParms(defaultopts);
-
+    # the line above completely overwrites the input options with default options and needs to be fixed
+    # I needed to set weights for some application when I realized that the weights aren't getting through
+    
+    
     # fid           = options['fid']
     # logLevel      = options['verbosity']
     maxIts        = options['iterations']
