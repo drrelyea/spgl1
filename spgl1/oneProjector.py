@@ -80,8 +80,9 @@ def oneProjectorMex(b,d,tau=-1):
 
 
 # THIS NEEDS TO BE REDONE IN C AND COMPILED FOR CYTHON
-def oneProjector(b,d=[],tau=-1):
-
+def oneProjector(b,d=None,tau=-1):
+    if d is None:
+        d = []
     if tau==-1:
         if not d:
             print('ERROR: oneProjector requires at least two input parameters')

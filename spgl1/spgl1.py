@@ -22,7 +22,7 @@ def Aprodprelambda(A,x,mode):
         else:
             return A(x,2)
 
-def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
+def spgl1(A, b, tau=None, sigma=None, x=None, options=None):
 # %SPGL1  Solve basis pursuit, basis pursuit denoise, and LASSO
 # %
 # % [x, r, g, info] = spgl1(A, b, tau, sigma, x0, options)
@@ -168,6 +168,11 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
     # DATE     = '$Date: 2008-06-16 22:43:07 -0700 (Mon, 16 Jun 2008) $';
     # REVISION = REVISION(11:end-1);
     # DATE     = DATE(35:50);
+    
+    tau     = [] if tau     is None else tau    
+    sigma   = [] if sigma   is None else sigma  
+    x       = [] if x       is None else x      
+    options = {} if options is None else options
 
     allocSize = 10000   # size of info vector pre-allocation
 
@@ -701,7 +706,7 @@ def spgl1(A, b, tau=[], sigma=[], x=[], options={}):
 
 
 
-def spg_bp(A, b, options={}):
+def spg_bp(A, b, options=None):
 # %SPG_BP  Solve the basis pursuit (BP) problem
 # %
 # %   SPG_BP is designed to solve the basis pursuit problem
@@ -735,7 +740,8 @@ def spg_bp(A, b, options={}):
 # %   Copyright 2008, Ewout van den Berg and Michael P. Friedlander
 # %   http://www.cs.ubc.ca/labs/scl/spgl1
 # %   $Id: spg_bp.m 1074 2008-08-19 05:24:28Z ewout78 $
-
+    if options is None:
+        options= {}
     sigma = 0
     tau = 0
     x0  = []
@@ -744,7 +750,7 @@ def spg_bp(A, b, options={}):
     return x,r,g,info
 
 
-def spg_bpdn(A, b, sigma, options={}):
+def spg_bpdn(A, b, sigma, options=None):
 # %SPG_BPDN  Solve the basis pursuit denoise (BPDN) problem
 # %
 # %   SPG_BPDN is designed to solve the basis pursuit denoise problem
@@ -779,13 +785,14 @@ def spg_bpdn(A, b, sigma, options={}):
 # %   Copyright 2008, Ewout van den Berg and Michael P. Friedlander
 # %   http://www.cs.ubc.ca/labs/scl/spgl1
 # %   $Id: spg_bpdn.m 1389 2009-05-29 18:32:33Z mpf $
-
+    if options is None:
+        options= {}
     tau = 0
     x0  = []
     return spgl1(A,b,tau,sigma,x0,options)
 
 
-def spg_lasso(A, b, tau, options={}):
+def spg_lasso(A, b, tau, options=None):
     # %SPG_LASSO  Solve the LASSO problem
     # %
     # %   SPG_LASSO is designed to solve the LASSO problem
@@ -818,13 +825,16 @@ def spg_lasso(A, b, tau, options={}):
     # %   Copyright 2008, Ewout van den Berg and Michael P. Friedlander
     # %   http://www.cs.ubc.ca/labs/scl/spgl1
     # %   $Id: spg_lasso.m 1074 2008-08-19 05:24:28Z ewout78 $
-
+    if options is None:
+        options= {}
     sigma = 0
     x0  = []
     return spgl1(A,b,tau,sigma,x0,options)
 
 
-def spg_mmv(A, B, sigma=0, options={}):
+def spg_mmv(A, B, sigma=0, options=None):
+    if options is None:
+        options= {}
     groups = B.shape[1]
 
     if isfunction(A):
