@@ -2,43 +2,19 @@ from __future__ import division, absolute_import
 import logging
 import numpy as np
 from scipy.sparse import spdiags
-from matplotlib.mlab import find
-from matplotlib.pyplot import figure, plot, hold, title, legend, xlabel, ylabel, show
 from spgl1 import spgl1, spg_lasso, spg_bp, spg_bpdn, spg_mmv, spgSetParms
+
+import matplotlib
+matplotlib.use('TkAgg')
+from matplotlib.mlab import find
+from matplotlib.pyplot import figure, plot, title, legend, xlabel, ylabel, show
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
-    # %DEMO  Demonstrates the use of the SPGL1 solver
-    # %
-    # % See also SPGL1.
-    
-    # %   demo.m
-    # %   $Id: spgdemo.m 1079 2008-08-20 21:34:15Z ewout78 $
-    # %
-    # %   ----------------------------------------------------------------------
-    # %   This file is part of SPGL1 (Spectral Projected Gradient for L1).
-    # %
-    # %   Copyright (C) 2007 Ewout van den Berg and Michael P. Friedlander,
-    # %   Department of Computer Science, University of British Columbia, Canada.
-    # %   All rights reserved. E-mail: <{ewout78,mpf}@cs.ubc.ca>.
-    # %
-    # %   SPGL1 is free software; you can redistribute it and/or modify it
-    # %   under the terms of the GNU Lesser General Public License as
-    # %   published by the Free Software Foundation; either version 2.1 of the
-    # %   License, or (at your option) any later version.
-    # %
-    # %   SPGL1 is distributed in the hope that it will be useful, but WITHOUT
-    # %   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-    # %   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General
-    # %   Public License for more details.
-    # %
-    # %   You should have received a copy of the GNU Lesser General Public
-    # %   License along with SPGL1; if not, write to the Free Software
-    # %   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
-    # %   USA
-    # %   ----------------------------------------------------------------------
+    # DEMO  Demonstrates the use of the SPGL1 solver
 
     # % Initialize random number generators
     np.random.seed(43273289)
@@ -73,6 +49,9 @@ if __name__ == '__main__':
     tau = np.pi
     x,resid,grad,info = spg_lasso(A, b, tau)
 
+    print(x0)
+    print(x)
+
     print('%s%s%s' % ('-'*35,' Solution ','-'*35))
     print('nonzeros(x) = %i,   ||x||_1 = %12.6e,   ||x||_1 - pi = %13.6e' % \
             (np.size(find(abs(x)>1e-5)), np.linalg.norm(x,1), np.linalg.norm(x,1)-np.pi))
@@ -98,7 +77,6 @@ if __name__ == '__main__':
 
     figure()
     plot(x,'b')
-    hold(True)
     plot(x0,'ro')
     legend(('Recovered coefficients','Original coefficients'))
     title('(a) Basis Pursuit')
@@ -128,7 +106,6 @@ if __name__ == '__main__':
 
     figure()
     plot(x,'b')
-    hold(True)
     plot(x0,'ro')
     legend(('Recovered coefficients','Original coefficients'))
     title('(b) Basis Pursuit Denoise')
@@ -175,7 +152,6 @@ if __name__ == '__main__':
 
     figure()
     plot(z.real,'b+',markersize=15.0)
-    hold(True)
     plot(z0.real,'bo')
     plot(z.imag,'r+',markersize=15.0)
     plot(z0.imag,'ro')
@@ -265,7 +241,6 @@ if __name__ == '__main__':
 
     figure()
     plot(x1,'b')
-    hold(True)
     plot(x0,'ro')
     legend(('Coefficients (1)','Original coefficients'))
     title('(e) Weighted Basis Pursuit')

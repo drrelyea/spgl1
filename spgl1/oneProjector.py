@@ -40,7 +40,7 @@ def oneProjectorMex_D(b,d,tau):
     n = np.size(b)
     x = np.zeros(n)
 
-    if (tau >= np.linalg.norm(d*b,1)):
+    if (tau >= np.linalg.norm(d*b, 1)):
         return b.copy()
     if (tau <  np.spacing(1)):
         return x.copy()
@@ -49,8 +49,8 @@ def oneProjectorMex_D(b,d,tau):
     b  = b[idx]
     d  = d[idx]
 
-    csdb = cumsum(d*b)
-    csd2 = cumsum(d*d)
+    csdb = np.cumsum(d*b)
+    csd2 = np.cumsum(d*d)
     alpha1 = (csdb-tau)/csd2
     alpha2 = b/d
     ggg = np.where(alpha1>=alpha2)
@@ -90,8 +90,8 @@ def oneProjector(b,d=None,tau=-1):
         tau = d
         d   = []
 
-    if not d:
-        d=1
+    #if not d:
+    #    d=1
 
     if not np.isscalar(d) and np.size(b) != np.size(d):
         print('ERROR: oneProjector: Vectors b and d must have the same length')
@@ -101,12 +101,12 @@ def oneProjector(b,d=None,tau=-1):
         return b.copy()
 
     s = np.sign(b)
-    b = abs(b)
+    b = np.abs(b)
 
     if np.isscalar(d):
         x = oneProjectorMex(b,tau/d);
     else:
-        d   = abs(d)
+        d   = np.abs(d)
         idx = np.where(d > np.spacing(1))
         x   = b.copy()
         x[idx] = oneProjectorMex(b[idx],d[idx],tau)

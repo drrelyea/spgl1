@@ -1,0 +1,14 @@
+name: spgl1
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python>=3.6.4
+  - numpy>=1.15.0
+  - scipy
+  - matplotlib
+  - ipython
+  - jupyter
+  - pytest
+  - pip:
+    - pytest-runner

@@ -1,5 +1,7 @@
 from __future__ import division, absolute_import
 import numpy as np
+from scipy.sparse import spdiags
+from scipy.sparse.linalg.interface import aslinearoperator
 from spgl1.oneProjector import oneProjector
 
 def spgSetParms(inputdictionary):
@@ -82,21 +84,21 @@ def reshape_rowwise(arr, m, n):
 
 # NOT OPTIMIZED
 def NormL12_project(g,x,weights,tau):
-    m = round(np.size(x) / g)
+    m = np.size(x) // g
     n = g
-    x = reshape(x,m,n)
+    x = x.reshape(m,n)
 
-    if all(np.isreal(x)):
+    if np.all(np.isreal(x)):
         xa  = np.sqrt(np.sum(x**2,axis=1))
     else:
         xa  = np.sqrt(np.sum(abs(x)**2,axis=1))
 
-    idx = xa < spacing(1)
+    idx = xa < np.spacing(1)
     xc  = oneProjector(xa,weights,tau)
 
     xc  = xc / xa
     xc[idx] = 0
-    x   = np.sparse.spdiags(xc,0,m,m)*x
+    x = spdiags(xc,0,m,m)*x
 
     return x.flatten()
 
@@ -106,12 +108,12 @@ def NormGroupL2_project(groups,x,weights,tau):
     else:
         xa  = np.sqrt(np.sum(groups * abs(x)**2.,axis=1))
 
-    idx = xa < spacing(1)
+    idx = xa < np.spacing(1)
     xc  = oneProjector(xa,weights,tau)
 
     xc  = xc / xa
     xc[idx] = 0
-    return dot(np.conj(groups.T),xc)*x
+    return np.dot(np.conj(groups.T),xc)*x
 
 def NormL1NN_project(x,weights,tau):
 
@@ -156,26 +158,26 @@ def NormL12_primal(g,x,weights):
     m = round(np.size(x) / g)
     n = g
     if all(np.isreal(x)):
-        return sum(weights*np.sqrt(sum(reshape(x,m,n)**2,axis=1)))
+        return sum(weights*np.sqrt(np.sum(x.reshape(m,n)**2,axis=1)))
     else:
-        return sum(weights*np.sqrt(sum(abs(reshape(x,m,n))**2,axis=1)))
+        return sum(weights*np.sqrt(np.sum(np.abs(x.reshape(m,n))**2,axis=1)))
 
 def NormL12_dual(g,x,weights):
 
-    m = round(length(x) / g)
+    m = len(x) // g
     n = g
 
     if all(np.isreal(x)):
-        return np.linalg.norm(np.sqrt(sum(reshape(x,m,n)**2,axis=1))/weights,np.inf)
+        return np.linalg.norm(np.sqrt(np.sum(x.reshape(m,n)**2,axis=1))/weights,np.inf)
     else:
-        return np.linalg.norm(np.sqrt(sum(abs(reshape(x,m,n))**2,axis=1))/weights,np.inf)
+        return np.linalg.norm(np.sqrt(np.sum(np.abs(x.reshape(m,n))**2,axis=1))/weights,np.inf)
 
 def NormGroupL2_dual(groups,x,weights):
 
-    if isreal(x):
-        return np.linalg.norm(np.sqrt(sum(groups * x**2,axis=1))/weights,np.inf)
+    if np.isreal(x):
+        return np.linalg.norm(np.sqrt(np.sum(groups * x**2,axis=1))/weights,np.inf)
     else:
-        return np.linalg.norm(np.sqrt(sum(groups * abs(x)**2,axis=1))/weights,np.inf)
+        return np.linalg.norm(np.sqrt(np.sum(groups * np.abs(x)**2,axis=1))/weights,np.inf)
 
 def NormL1NN_dual(x,weights):
 # % Dual of non-negative L1 gauge function
@@ -183,7 +185,7 @@ def NormL1NN_dual(x,weights):
     xx[xx<0]=0
     return np.linalg.norm(xx/weights,np.inf)
 
-def spgLineCurvy(x,g,fMax,Aprod,b,spglproject,weights,tau):
+def spgLineCurvy(x,g,fMax,A,b,spglproject,weights,tau):
 
     EXIT_CONVERGED  = 0
     EXIT_ITERATIONS = 1
@@ -201,8 +203,8 @@ def spgLineCurvy(x,g,fMax,Aprod,b,spglproject,weights,tau):
 
         # % Evaluate trial point and function value.
         xNew     = spglproject(x - step*scale*g, weights,tau)
-        rNew     = b - Aprod(xNew,1)
-        fNew     = abs(np.conj(rNew).dot(rNew)) / 2.
+        rNew     = b - A.matvec(xNew)
+        fNew     = np.abs(np.conj(rNew).dot(rNew)) / 2.
         s        = xNew - x
         gts      = scale * np.real(np.dot(np.conj(g),s))
 
@@ -243,7 +245,7 @@ def spgLineCurvy(x,g,fMax,Aprod,b,spglproject,weights,tau):
 
     return fNew,xNew,rNew,iterr,step,err
 
-def spgLine(f,x,d,gtd,fMax,Aprod,b):
+def spgLine(f,x,d,gtd,fMax,A,b):
 
     EXIT_CONVERGED  = 0
     EXIT_iterrATIONS = 1
@@ -257,7 +259,7 @@ def spgLine(f,x,d,gtd,fMax,Aprod,b):
 
         # % Evaluate trial point and function value.
         xNew = x + step*d
-        rNew = b - Aprod(xNew,1)
+        rNew = b - A.matvec(xNew)
         fNew = abs(np.conj(rNew).dot(rNew)) / 2.
 
         # % Check exit conditions.
@@ -282,28 +284,29 @@ def spgLine(f,x,d,gtd,fMax,Aprod,b):
 
     return fNew,xNew,rNew,iterr,err
 
-def LSQRprod(Aprod,nnzIdx,ebar,n,dx,mode):
+def LSQRprod(A,nnzIdx,ebar,n,dx,mode):
 # % Matrix multiplication for subspace minimization.
 # % Only called by LSQR.
     nbar = np.size(ebar)
     if mode == 1:
         y = np.zeros(n)
-        y[nnzIdx] = dx - (1./nbar)*dot(dot(np.conj(ebar),dx),ebar) #% y(nnzIdx) = Z*dx '
-        z = Aprod(y,1) #                           % z = S Z dx
+        y[nnzIdx] = dx - (1./nbar)*np.dot(np.dot(np.conj(ebar),dx),ebar) #% y(nnzIdx) = Z*dx '
+        z = A.matvec(y) #                           % z = S Z dx
     else:
-        y = Aprod(dx,2)
-        z = y[nnzIdx] - (1./nbar)*dot(dot(np.conj(ebar),y[nnzIdx]),ebar)
+        y = A.rmatvect(dx)
+        z = y[nnzIdx] - (1./nbar)*np.dot(np.dot(np.conj(ebar),y[nnzIdx]),ebar)
     return z
 
-def activeVars(x,g,nnzIdx,options):
+def activeVars(x,g,nnzIdx, optTol,
+               weights, dual_norm):
     # % Find the current active set.
     # % nnzX    is the number of nonzero x.
     # % nnzG    is the number of elements in nnzIdx.
     # % nnzIdx  is a vector of primal/dual indicators.
     # % nnzDiff is the no. of elements that changed in the support.
-    xTol    = min([.1,10.*options['optTol']])
-    gTol    = min([.1,10.*options['optTol']])
-    gNorm   = options['dual_norm'](g,options['weights'])
+    xTol    = min([.1,10.*optTol])
+    gTol    = min([.1,10.*optTol])
+    gNorm   = dual_norm(g, weights)
     nnzOld  = np.copy(nnzIdx)
 
     # % Reduced costs for postive & negative parts of x.
