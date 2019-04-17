@@ -1,8 +1,9 @@
 from __future__ import division, absolute_import
-import numpy as np
-from scipy.sparse.linalg.interface import aslinearoperator
-from inspect import isfunction
 import logging
+import numpy as np
+
+from scipy.sparse.linalg import LinearOperator
+from scipy.sparse.linalg.interface import aslinearoperator
 from spgl1.lsqr import lsqr
 from spgl1.spgl_aux import NormL12_project, NormL12_primal, NormL12_dual, \
                            NormL1_project,  NormL1_primal,  NormL1_dual, \
@@ -326,7 +327,7 @@ def spgl1(A, b, tau=0, sigma=0, x=None,
             break
 
         # Iterations begin here.
-        iterr += iterr
+        iterr += 1
         xOld = x.copy()
         fOld = f.copy()
         gOld = g.copy()
@@ -570,7 +571,7 @@ def spg_bp(A, b, **kwargs):
     return x,r,g,info
 
 
-def spg_bpdn(A, b, sigma, options=None):
+def spg_bpdn(A, b, sigma, **kwargs):
 # %SPG_BPDN  Solve the basis pursuit denoise (BPDN) problem
 # %
 # %   SPG_BPDN is designed to solve the basis pursuit denoise problem
@@ -605,11 +606,9 @@ def spg_bpdn(A, b, sigma, options=None):
 # %   Copyright 2008, Ewout van den Berg and Michael P. Friedlander
 # %   http://www.cs.ubc.ca/labs/scl/spgl1
 # %   $Id: spg_bpdn.m 1389 2009-05-29 18:32:33Z mpf $
-    if options is None:
-        options = {}
     tau = 0
     x0  = None
-    return spgl1(A,b,tau,sigma,x0,options)
+    return spgl1(A,b,tau,sigma,x0, **kwargs)
 
 
 def spg_lasso(A, b, tau, options=None):
@@ -653,13 +652,10 @@ def spg_lasso(A, b, tau, options=None):
 
 
 def spg_mmv(A, B, sigma=0, **kwargs):
+    A = aslinearoperator(A)
+    m, n = A.shape
     groups = B.shape[1]
-    if isfunction(A):
-        raise NotImplementedError()     # implement blockDiagonalImplicit
-    else:
-        m = A.shape[0]
-        n = A.shape[1]
-        A_fh = lambda x, mode: blockDiagonalExplicit(A, m, n, groups, x, mode)
+    A_fh = _blockdiag(A, m, n, groups)
 
     # Set projection specific functions
     project = lambda x, weight, tau: NormL12_project(groups, x, weight, tau)
@@ -667,25 +663,32 @@ def spg_mmv(A, B, sigma=0, **kwargs):
     dual_norm = lambda x, weight: NormL12_dual(groups, x, weight)
 
     tau = 0
-    x0  = []
-    x, r, g, info = spgl1(A_fh, B.flatten(1), tau, sigma, x0, project=project,
+    x0  = None
+    x, r, g, info = spgl1(A_fh, B.ravel(), tau, sigma, x0, project=project,
                           primal_norm=primal_norm, dual_norm=dual_norm,
                           **kwargs)
 
-    n = np.round(x.shape[0] / groups)
-    m = B.shape[0]
+    #n = np.round(x.shape[0] / groups)
+    #m = B.shape[0]
     x = reshape_rowwise(x, n, groups)
     g = reshape_rowwise(g, n, groups)
 
     return x, r, g, info
 
-def blockDiagonalExplicit(A, m, n, g, x, mode):
-    if mode == 1:
-        x = reshape_rowwise(x, n, g)
-        y = A.dot(x)
-        y = y.flatten(1)
-    else:
-        x = reshape_rowwise(x, m, g)
-        y = np.dot(x.conj().transpose(), A).conj().transpose()
-        y = y.flatten(1)
-    return y
+class _blockdiag(LinearOperator):
+    def __init__(self, A, m, n, g):
+        self.m = m
+        self.n = n
+        self.g = g
+        self.A = A
+        self.AH = A.H
+        self.shape = (m*g, n*g)
+        self.dtype = A.dtype
+    def _matvec(self, x):
+        x = reshape_rowwise(x, self.n, self.g)
+        y = self.A.matmat(x)
+        return y.ravel()
+    def _rmatvec(self, x):
+        x = reshape_rowwise(x, self.m, self.g)
+        y = self.AH.matmat(x)
+        return y.ravel()
