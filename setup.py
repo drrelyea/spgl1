@@ -1,5 +1,6 @@
 import os
 from distutils.core import setup
+from setuptools import find_packages
 
 def src(pth):
     return os.path.join(os.path.dirname(__file__), pth)
@@ -31,8 +32,8 @@ setup(
     author_email='drrelyea@gmail.com',
     url='https://github.com/drrelyea/SPGL1_python_port',
     install_requires=['numpy', 'scipy'],
-    packages=['spgl1'],
-    setup_requires=['pytest-runner', 'setuptools_scm'],
+    packages=find_packages(exclude=['pytests']),
+    setup_requires=['pytest-runner'],
     test_suite='pytests',
     tests_require=['pytest'],
     zip_safe=True)
