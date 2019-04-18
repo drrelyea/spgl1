@@ -1,7 +1,9 @@
 from __future__ import division, absolute_import
-import numpy as np
-from inspect import isfunction
 import logging
+import numpy as np
+
+from scipy.sparse.linalg import LinearOperator
+from scipy.sparse.linalg.interface import aslinearoperator
 from spgl1.lsqr import lsqr
 from spgl1.spgl_aux import NormL12_project, NormL12_primal, NormL12_dual, \
                            NormL1_project,  NormL1_primal,  NormL1_dual, \
@@ -9,326 +11,166 @@ from spgl1.spgl_aux import NormL12_project, NormL12_primal, NormL12_dual, \
 
 logger = logging.getLogger(__name__)
 
-def Aprodprelambda(A,x,mode):
-    from inspect import isfunction
-    if mode == 1:
-        if not isfunction(A):
-            return np.dot(A,x)
-        else:
-            return A(x,1)
-    else:
-        if not isfunction(A):
-            return np.conj(np.dot(np.conj(x.T),A).T)
-        else:
-            return A(x,2)
+# Size of info vector in case of infinite iterations
+_allocSize = 10000
 
-def spgl1(A, b, tau=None, sigma=None, x=None, options=None):
-# %SPGL1  Solve basis pursuit, basis pursuit denoise, and LASSO
-# %
-# % [x, r, g, info] = spgl1(A, b, tau, sigma, x0, options)
-# %
-# % ---------------------------------------------------------------------
-# % Solve the basis pursuit denoise (BPDN) problem
-# %
-# % (BPDN)   minimize  ||x||_1  subj to  ||Ax-b||_2 <= sigma,
-# %
-# % or the l1-regularized least-squares problem
-# %
-# % (LASSO)  minimize  ||Ax-b||_2  subj to  ||x||_1 <= tau.
-# % ---------------------------------------------------------------------
-# %
-# % INPUTS
-# % ======
-# % A        is an m-by-n matrix, explicit or an operator.
-# %          If A is a function, then it must have the signature
-# %
-# %          y = A(x,mode)   if mode == 1 then y = A x  (y is m-by-1);
-# %                          if mode == 2 then y = A'x  (y is n-by-1).
-# %
-# % b        is an m-vector.
-# % tau      is a nonnegative scalar; see (LASSO).
-# % sigma    if sigma != inf or != [], then spgl1 will launch into a
-# %          root-finding mode to find the tau above that solves (BPDN).
-# %          In this case, it's STRONGLY recommended that tau = 0.
-# % x0       is an n-vector estimate of the solution (possibly all
-# %          zeros). If x0 = [], then SPGL1 determines the length n via
-# %          n = length( A'b ) and sets  x0 = zeros(n,1).
-# % options  is a structure of options from spgSetParms. Any unset options
-# %          are set to their default value; set options=[] to use all
-# %          default values.
-# %
-# % OUTPUTS
-# % =======
-# % x        is a solution of the problem
-# % r        is the residual, r = b - Ax
-# % g        is the gradient, g = -A'r
-# % info     is a structure with the following information:
-# %          .tau     final value of tau (see sigma above)
-# %          .rNorm   two-norm of the optimal residual
-# %          .rGap    relative duality gap (an optimality measure)
-# %          .gNorm   Lagrange multiplier of (LASSO)
-# %          .stat    = 1 found a BPDN solution
-# %                   = 2 found a BP sol'n; exit based on small gradient
-# %                   = 3 found a BP sol'n; exit based on small residual
-# %                   = 4 found a LASSO solution
-# %                   = 5 error: too many iterrations
-# %                   = 6 error: linesearch failed
-# %                   = 7 error: found suboptimal BP solution
-# %                   = 8 error: too many matrix-vector products
-# %          .time    total solution time (seconds)
-# %          .nProdA  number of multiplications with A
-# %          .nProdAt number of multiplications with A'
-# %
-# % OPTIONS
-# % =======
-# % Use the options structure to control various aspects of the algorithm:
-# %
-# % options.fid         File ID to direct log output
-# %        .verbosity   0=quiet, 1=some output, 2=more output.
-# %        .iterrations  Max. number of iterrations (default if 10*m).
-# %        .bpTol       Tolerance for identifying a basis pursuit solution.
-# %        .optTol      Optimality tolerance (default is 1e-4).
-# %        .decTol      Larger decTol means more frequent Newton updates.
-# %        .subspaceMin 0=no subspace minimization, 1=subspace minimization.
-# %
-# % EXAMPLE
-# % =======
-# %   m = 120; n = 512; k = 20; % m rows, n cols, k nonzeros.
-# %   p = randperm(n); x0 = zeros(n,1); x0(p(1:k)) = sign(randn(k,1));
-# %   A  = randn(m,n); [Q,R] = qr(A',0);  A = Q';
-# %   b  = A*x0 + 0.005 * randn(m,1);
-# %   opts = spgSetParms('optTol',1e-4);
-# %   [x,r,g,info] = spgl1(A, b, 0, 1e-3, [], opts); % Find BP sol'n.
-# %
-# % AUTHORS
-# % =======
-# %  Ewout van den Berg (ewout78@cs.ubc.ca)
-# %  Michael P. Friedlander (mpf@cs.ubc.ca)
-# %    Scientific Computing Laboratory (SCL)
-# %    University of British Columbia, Canada.
+# Exit conditions (constants).
+EXIT_ROOT_FOUND = 1
+EXIT_BPSOL_FOUND = 2
+EXIT_LEAST_SQUARES = 3
+EXIT_OPTIMAL = 4
+EXIT_iterrATIONS = 5
+EXIT_LINE_ERROR = 6
+EXIT_SUBOPTIMAL_BP = 7
+EXIT_MATVEC_LIMIT = 8
+EXIT_ACTIVE_SET = 9
 
-# Translated to python by David Relyea (drrelyea@gmail.com)
-# This translation needs work - the core routines need to be done in cython for speed
-# Still, it works
-# I have not performed any unit testing - the code may have hidden issues
-# If you find any problems, please let me know
 
-# %
-# % BUGS
-# % ====
-# % Please send bug reports or comments to
-# %            Michael P. Friedlander (mpf@cs.ubc.ca)
-# %            Ewout van den Berg (ewout78@cs.ubc.ca)
+def spgl1(A, b, tau=0, sigma=0, x=None,
+          fid=1, verbosity=2, iterations=None, nPrevVals=3, bpTol=1e-6,
+          lsTol=1e-6, optTol=1e-4, decTol=1e-4, stepMin=1e-16, stepMax=1e5,
+          rootMethod=2, activeSetIt=np.inf, subspaceMin=False, iscomplex=np.nan,
+          maxMatvec=np.inf, weights=None, project=NormL1_project,
+          primal_norm=NormL1_primal, dual_norm=NormL1_dual):
+    r"""SPGL1
 
-# % 15 Apr 07: First version derived from spg.m.
-# %            Michael P. Friedlander (mpf@cs.ubc.ca).
-# %            Ewout van den Berg (ewout78@cs.ubc.ca).
-# % 17 Apr 07: Added root-finding code.
-# % 18 Apr 07: sigma was being compared to 1/2 r'r, rather than
-# %            norm(r), as advertised.  Now immediately change sigma to
-# %            (1/2)sigma^2, and changed log output accordingly.
-# % 24 Apr 07: Added quadratic root-finding code as an option.
-# % 24 Apr 07: Exit conditions need to guard against small ||r||
-# %            (ie, a BP solution).  Added test1,test2,test3 below.
-# % 15 May 07: Trigger to update tau is now based on relative difference
-# %            in objective between consecutive iterrations.
-# % 15 Jul 07: Added code to allow a limited number of line-search
-# %            errors.
-# % 23 Feb 08: Fixed bug in one-norm projection using weights. Thanks
-# %            to Xiangrui Meng for reporting this bug.
-# % 26 May 08: The simple call spgl1(A,b) now solves (BPDN) with sigma=0.
-# % 18 Mar 13: Reset f = fOld if curvilinear line-search fails.
-# %            Avoid computing the Barzilai-Borwein scaling parameter
-# %            when both line-search algorithms failed.
-#   07 Feb 15: Code translated into python
+    Solve basis pursuit, basis pursuit denoise, and LASSO problems.
 
-# %   ----------------------------------------------------------------------
-# %   This file is part of SPGL1 (Spectral Projected-Gradient for L1).
-# %
-# %   Copyright (C) 2007 Ewout van den Berg and Michael P. Friedlander,
-# %   Department of Computer Science, University of British Columbia, Canada.
-# %   All rights reserved. E-mail: <{ewout78,mpf}@cs.ubc.ca>.
-# %
-# %   SPGL1 is free software; you can redistribute it and/or modify it
-# %   under the terms of the GNU Lesser General Public License as
-# %   published by the Free Software Foundation; either version 2.1 of the
-# %   License, or (at your option) any later version.
-# %
-# %   SPGL1 is distributed in the hope that it will be useful, but WITHOUT
-# %   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-# %   or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General
-# %   Public License for more details.
-# %
-# %   You should have received a copy of the GNU Lesser General Public
-# %   License along with SPGL1; if not, write to the Free Software
-# %   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
-# %   USA
-# %   ----------------------------------------------------------------------
-    # REVISION = '$Revision: 1017 $';
-    # DATE     = '$Date: 2008-06-16 22:43:07 -0700 (Mon, 16 Jun 2008) $';
-    # REVISION = REVISION(11:end-1);
-    # DATE     = DATE(35:50);
-    
-    tau     = [] if tau     is None else tau    
-    sigma   = [] if sigma   is None else sigma  
-    x       = [] if x       is None else x      
-    options = {} if options is None else options
+    Parameters
+    ----------
+    A : :obj:`numpy.ndarray` or :obj:`lops.LinearOperator`
+        Operator to invert
+    b : :obj:`numpy.ndarray`
+        Data
+    tau : :obj:`list`
+        LASSO threshold. If different from None, SPGL1 will solve LASSO problem
+    sigma : :obj:`float`
+        BPDN threshold. If different from ``np.inf`` or  ``None``, SPGL1 will solve BPDN problem
+    x0 : :obj:`numpy.ndarray`
+        Initial guess
+    options : :obj:`dict`
+        Optional parameters to be used to control various aspects of the algorithm:
+        ``.fid``, File ID to direct log output.
+        ``.verbosity``, 0=quiet, 1=some output, 2=more output.
+        ``.iterations``, Max. number of iterrations (default if 10*m).
+        ``.bpTol``, Tolerance for identifying a basis pursuit solution.
+        ``.optTol``, Optimality tolerance (default is 1e-4).
+        ``.decTol``, Larger decTol means more frequent Newton updates.
+        ``.subspaceMin``, 0=no subspace minimization, 1=subspace minimization.
+        Any unset options are set to their default value.
 
-    allocSize = 10000   # size of info vector pre-allocation
+    Returns
+    -------
+    xinv : :obj:`numpy.ndarray`
+        Inverted model in original domain.
+    pinv : :obj:`numpy.ndarray`
+        Inverted model in sparse domain.
+    info : :obj:`dict`
+        Dictionary with the following information:
 
-    def betterAprod(A): return lambda x,mode: Aprodprelambda(A,x,mode)
+        ``.tau``, final value of tau (see sigma above)
 
-    Aprod = betterAprod(A)
+        ``.rNorm``, two-norm of the optimal residual
 
-    m = np.size(b)
+        ``.rGap``, relative duality gap (an optimality measure)
 
-    if False:
-        pass
-    # elif not b and not A:
-    #     print('SPGL1 ERROR: At least two arguments are required')
-    elif not tau and not sigma:
-        tau = 0
-        sigma = 0
+        ``.gNorm``, Lagrange multiplier of (LASSO)
+
+        ``.stat``,
+               1: found a BPDN solution,
+               2: found a BP solution; exit based on small gradient,
+               3: found a BP solution; exit based on small residual,
+               4: found a LASSO solution,
+               5: error: too many iterrations,
+               6: error: linesearch failed,
+               7: error: found suboptimal BP solution,
+               8: error: too many matrix-vector products
+
+        ``.time``, total solution time (seconds)
+
+        ``.nProdA``, number of multiplications with A
+
+        ``.nProdAt``, number of multiplications with A'
+
+    """
+    A = aslinearoperator(A)
+    m, n = A.shape
+
+    if tau == 0:
         singleTau = False
-    elif not sigma: # tau is not empty
+    else:
         singleTau = True
-    else:
-        if not tau:
-            tau = 0
-        singleTau = False
 
-    # %----------------------------------------------------------------------
-    # % Grab input options and set defaults where needed.
-    # %----------------------------------------------------------------------
-    defaultopts = spgSetParms({
-    'fid'        :      1 , # File ID for output
-    'verbosity'  :      2 , # Verbosity level
-    'iterations' :   10*m , # Max number of iterrations
-    'nPrevVals'  :      3 , # Number previous func values for linesearch
-    'bpTol'      :  1e-06 , # Tolerance for basis pursuit solution
-    'lsTol'      :  1e-06 , # Least-squares optimality tolerance
-    'optTol'     :  1e-04 , # Optimality tolerance
-    'decTol'     :  1e-04 , # Reqd rel. change in primal obj. for Newton
-    'stepMin'    :  1e-16 , # Minimum spectral step
-    'stepMax'    :  1e+05 , # Maximum spectral step
-    'rootMethod' :      2 , # Root finding method: 2=quad,1=linear (not used).
-    'activeSetIt':    np.inf , # Exit with EXIT_ACTIVE_SET if nnz same for # its.
-    'subspaceMin':      0 , # Use subspace minimization
-    'iscomplex'  :    np.nan , # Flag set to indicate complex problem
-    'maxMatvec'  :    np.inf , # Maximum matrix-vector multiplies allowed
-    'weights'    :      1 , # Weights W in ||Wx||_1
-    'project'    : NormL1_project ,
-    'primal_norm': NormL1_primal  ,
-    'dual_norm'  : NormL1_dual
-       })
-    options = spgSetParms(defaultopts);
-
-    # fid           = options['fid']
-    # logLevel      = options['verbosity']
-    maxIts        = options['iterations']
-    nPrevVals     = options['nPrevVals']
-    bpTol         = options['bpTol']
-    lsTol         = options['lsTol']
-    optTol        = options['optTol']
-    decTol        = options['decTol']
-    stepMin       = options['stepMin']
-    stepMax       = options['stepMax']
-    activeSetIt   = options['activeSetIt']
-    subspaceMin   = options['subspaceMin']
-    maxMatvec     = max(3,options['maxMatvec'])
-    weights       = options['weights']
+    if iterations is None:
+        iterations = 10*m
 
     maxLineErrors = 10     #% Maximum number of line-search failures.
     pivTol        = 1e-12  #% Threshold for significant Newton step.
 
-    # %----------------------------------------------------------------------
-    # % Initialize local variables.
-    # %----------------------------------------------------------------------
-    iterr         = 0
-    itnTotLSQR    = 0 #% Total SPGL1 and LSQR iterrations.
-    nProdA        = 0
-    nProdAt       = 0
-    lastFv        = -np.inf*np.ones(nPrevVals)  #% Last m function values.
-    nLineTot      = 0                  #% Total no. of linesearch steps.
-    printTau      = False
-    nNewton       = 0
-    bNorm         = np.linalg.norm(b)
-    stat          = False
-    timeProject   = 0
-    timeMatProd   = 0
-    nnziterr      = 0                  #% No. of its with fixed pattern.
-    nnzIdx        = []                 #% Active-set indicator.
-    subspace      = False              #% Flag if did subspace min in current itn.
-    stepG         = 1                  #% Step length for projected gradient.
-    testUpdateTau = 0                  #% Previous step did not update tau
+    maxIts = iterations
+    maxMatvec = max(3, maxMatvec)
 
-    #% Determine initial x, vector length n, and see if problem is complex
-    from inspect import isfunction
-    explicit = not isfunction(A)
-    if x==[]:
-        if explicit:
-            n = np.shape(A)[1]
-            realx = np.lib.isreal(A).all() and np.lib.isreal(b).all()
-        else:
-            x = Aprod(b,2)
-            n = np.size(x)
-            realx = np.lib.isreal(A).all() and np.lib.isreal(b).all()
+    # Initialize local variables.
+    iterr = 0
+    itnTotLSQR = 0 # Total SPGL1 and LSQR iterrations.
+    nProdA = 0
+    nProdAt = 0
+    lastFv = -np.inf * np.ones(nPrevVals)  # Last m function values.
+    nLineTot = 0  # Total no. of linesearch steps.
+    printTau = False
+    nNewton = 0
+    bNorm = np.linalg.norm(b)
+    stat = False
+    timeProject = 0
+    timeMatProd = 0
+    nnziterr = 0 # No. of its with fixed pattern.
+    nnzIdx = [] # Active-set indicator.
+    subspace = False  # Flag if did subspace min in current itn.
+    stepG = 1  # Step length for projected gradient.
+    testUpdateTau = 0 # Previous step did not update tau
+
+    # Determine initial x and see if problem is complex
+    realx = np.lib.isreal(A).all() and np.lib.isreal(b).all()
+    if x is None:
         x = np.zeros(n)
-    else:
-        n     = np.size(x)
-        realx = np.lib.isreal(A).all() and np.lib.isreal(b).all()
 
-    if explicit:
-        realx = realx and np.lib.isreal(A).all()
+    #% Override realx when iscomplex flag is set
+    if not np.isnan(iscomplex):
+        realx = iscomplex == 0
 
-    #% Override options when options.iscomplex flag is set
-    if (not np.isnan(options['iscomplex'])):
-        realx = options['iscomplex'] == 0
-
-    #% Check if all weights (if any) are strictly positive. In previous
-    #% versions we also checked if the number of weights was equal to
-    #% n. In the case of multiple measurement vectors, this no longer
-    #% needs to apply, so the check was removed.
-    if weights:
+    # Check if all weights (if any) are strictly positive. In previous
+    # versions we also checked if the number of weights was equal to
+    # n. In the case of multiple measurement vectors, this no longer
+    # needs to apply, so the check was removed.
+    if weights is not None:
         if not np.isfinite(weights).all():
-            print('SPGL1 ERROR: Entries in options.weights must be finite')
+            raise ValueError('Entries in weights must be finite')
         if np.any(weights <= 0):
-            print('SPGL1 ERROR: Entries in options.weights must be strictly positive')
+            raise ValueError('Entries in weights must be strictly positive')
     else:
         weights = 1
 
-    #% Quick exit if sigma >= ||b||.  Set tau = 0 to short-circuit the loop.
+    # Quick exit if sigma >= ||b||.  Set tau = 0 to short-circuit the loop.
     if bNorm <= sigma:
         print('W: sigma >= ||b||.  Exact solution is x = 0.')
         tau = 0
         singleTau = True
 
-    #% Dont do subspace minimization if x is complex.
+    # Do not do subspace minimization if x is complex.
     if not realx and subspaceMin:
         print('W: Subspace minimization disabled when variables are complex.')
         subspaceMin = False
 
     #% Pre-allocate iteration info vectors
-    xNorm1  = np.zeros(min(maxIts, allocSize))
-    rNorm2  = np.zeros(min(maxIts, allocSize))
-    lambdaa = np.zeros(min(maxIts, allocSize))
-
-    #% Exit conditions (constants).
-    EXIT_ROOT_FOUND    = 1
-    EXIT_BPSOL_FOUND   = 2
-    EXIT_LEAST_SQUARES = 3
-    EXIT_OPTIMAL       = 4
-    EXIT_iterrATIONS   = 5
-    EXIT_LINE_ERROR    = 6
-    EXIT_SUBOPTIMAL_BP = 7
-    EXIT_MATVEC_LIMIT  = 8
-    EXIT_ACTIVE_SET    = 9
+    xNorm1 = np.zeros(min(maxIts, _allocSize))
+    rNorm2 = np.zeros(min(maxIts, _allocSize))
+    lambdaa = np.zeros(min(maxIts, _allocSize))
 
     #%----------------------------------------------------------------------
     #% Log header.
     #%----------------------------------------------------------------------
 
-# DO THIS LATER
+    # DO THIS LATER
 
     # print('');
     # print(' #%s\n',repmat('=',1,80));
@@ -359,111 +201,97 @@ def spgl1(A, b, tau=None, sigma=None, x=None, options=None):
     # end
 
     #% Project the starting point and evaluate function and gradient.
+    spglproject = project
+    x = spglproject(x, weights, tau)
+    r = b - A.matvec(x)  #% r = b - Ax
+    g =   - A.rmatvec(r)  #% g = -A'r
+    f = np.abs(np.dot(np.conj(r), r)) / 2.
 
-    spglproject=options['project']
-
-    x         = spglproject(x,weights,tau)
-    r         = b - Aprod(x,1)  #% r = b - Ax
-    g         =   - Aprod(r,2)  #% g = -A'r
-    f         = abs(np.dot(np.conj(r),r)) / 2.
-
-    #% Required for nonmonotone strategy.
+    # Required for nonmonotone strategy.
     lastFv[0] = f.copy()
-    fBest     = f.copy()
-    xBest     = x.copy()
-    fOld      = f.copy()
+    fBest = f.copy()
+    xBest = x.copy()
+    fOld = f.copy()
 
-    #% Compute projected gradient direction and initial steplength.
-    dx     = spglproject(x - g, weights, tau) - x
-    dxNorm = np.linalg.norm(dx,np.inf)
+    # Compute projected gradient direction and initial steplength.
+    dx = spglproject(x - g, weights, tau) - x
+    dxNorm = np.linalg.norm(dx, np.inf)
     if dxNorm < (1. / stepMax):
         gStep = stepMax
     else:
-        gStep = min( stepMax, max(stepMin, 1./dxNorm) )
+        gStep = min(stepMax, max(stepMin, 1./dxNorm))
 
-    #%----------------------------------------------------------------------
-    #% MAIN LOOP.
-    #%----------------------------------------------------------------------
+    # Main iteration loop.
     while 1:
-
-        #%------------------------------------------------------------------
-        #% Test exit conditions.
-        #%------------------------------------------------------------------
+        # Test exit conditions.
 
         #% Compute quantities needed for log and exit conditions.
-        gNorm   = options['dual_norm'](-g,weights)
-        rNorm   = np.linalg.norm(r)
-        gap     = np.dot(np.conj(r), r-b) + tau*gNorm
-        rGap    = abs(gap) / max(1.,f)
+        gNorm = dual_norm(-g, weights)
+        rNorm = np.linalg.norm(r)
+        gap = np.dot(np.conj(r), r-b) + tau*gNorm
+        rGap = abs(gap) / max(1.,f)
         aError1 = rNorm - sigma
         aError2 = f - sigma**2. / 2.
-        rError1 = abs(aError1) / max(1.,rNorm)
-        rError2 = abs(aError2) / max(1.,f)
+        rError1 = abs(aError1) / max(1., rNorm)
+        rError2 = abs(aError2) / max(1., f)
 
         #% Count number of consecutive iterrations with identical support.
         nnzOld = nnzIdx
-
-        [nnzX,nnzG,nnzIdx,nnzDiff] = activeVars(x,g,nnzIdx,options);
+        [nnzX, nnzG, nnzIdx, nnzDiff] = activeVars(x,g,nnzIdx, optTol,
+                                                   weights, dual_norm)
 
         if nnzDiff:
             nnziterr = 0
         else:
-            nnziterr = nnziterr + 1
+            nnziterr += nnziterr
             if nnziterr+1 >= activeSetIt:
-                stat=EXIT_ACTIVE_SET
+                stat = EXIT_ACTIVE_SET
 
-
-        #% Single tau: Check if were optimal.
-        #% The 2nd condition is there to guard against large tau.
+        # Single tau: Check if were optimal. The 2nd condition is there to guard against large tau.
+        # Multiple tau: Check if found root and/or if tau needs updating.
         if singleTau:
             if rGap <= optTol or rNorm < optTol*bNorm:
                 stat  = EXIT_OPTIMAL
-
-        #% Multiple tau: Check if found root and/or if tau needs updating.
         else:
-
-           #% Test if a least-squares solution has been found
+            # Test if a least-squares solution has been found
             if gNorm <= lsTol * rNorm:
                 stat = EXIT_LEAST_SQUARES
 
             if rGap <= max(optTol, rError2) or rError1 <= optTol:
-              #% The problem is nearly optimal for the current tau.
-              #% Check optimality of the current root.
+              # The problem is nearly optimal for the current tau.
+              # Check optimality of the current root.
+                if rNorm <=  sigma:
+                    stat=EXIT_SUBOPTIMAL_BP # Found suboptimal BP sol.
+                if rError1 <=  optTol:
+                    stat=EXIT_ROOT_FOUND # Found approx root.
+                if rNorm <=   bpTol * bNorm:
+                    stat=EXIT_BPSOL_FOUND # Resid minimzd -> BP sol.
+            # 30 Jun 09: Large tau could mean large rGap even near LS sol.
+            #            Move LS check out of this if statement.
+            # if test2, stat=EXIT_LEAST_SQUARES; end #% Gradient zero -> BP sol.
 
-                if rNorm       <=  sigma:
-                    stat=EXIT_SUBOPTIMAL_BP  #% Found suboptimal BP sol.
-                if rError1     <=  optTol:
-                    stat=EXIT_ROOT_FOUND  #% Found approx root.
-                if rNorm       <=   bpTol * bNorm:
-                    stat=EXIT_BPSOL_FOUND #% Resid minimzd -> BP sol.
-            #% 30 Jun 09: Large tau could mean large rGap even near LS sol.
-            #%            Move LS check out of this if statement.
-            #% if test2, stat=EXIT_LEAST_SQUARES; end #% Gradient zero -> BP sol.
-
-            testRelChange1 = (abs(f - fOld) <= decTol * f)
-            testRelChange2 = (abs(f - fOld) <= 1e-1 * f * (abs(rNorm - sigma)))
+            testRelChange1 = (np.abs(f - fOld) <= decTol * f)
+            testRelChange2 = (np.abs(f - fOld) <= 1e-1 * f * (np.abs(rNorm - sigma)))
             testUpdateTau  = ((testRelChange1 and rNorm >  2 * sigma) or \
                              (testRelChange2 and rNorm <= 2 * sigma)) and \
                              not stat and not testUpdateTau
 
             if testUpdateTau:
-              #% Update tau.
-                tauOld   = np.copy(tau)
-                tau      = max(0,tau + (rNorm * aError1) / gNorm)
-                nNewton  = nNewton + 1
-                printTau = abs(tauOld - tau) >= 1e-6 * tau #% For log only.
+              # Update tau.
+                tauOld = np.copy(tau)
+                tau = max(0,tau + (rNorm * aError1) / gNorm)
+                nNewton = nNewton + 1
+                printTau = np.abs(tauOld - tau) >= 1e-6 * tau # For log only.
                 if tau < tauOld:
-                   #% The one-norm ball has decreased.  Need to make sure that the
-                   #% next iterrate if feasible, which we do by projecting it.
+                    # The one-norm ball has decreased. Need to make sure that the
+                    # next iterate if feasible, which we do by projecting it.
                     x = spglproject(x,weights,tau)
 
-        #% Too many its and not converged.
+        #% Too many iterations and not converged.
         if not stat and iterr+1 >= maxIts:
             stat = EXIT_iterrATIONS
 
-        # #%------------------------------------------------------------------
-        # #% Print log, update history and act on exit conditions.
-        # #%------------------------------------------------------------------
+        # Print log, update history and act on exit conditions.
         # if logLevel >= 2 or singleTau or printTau or iterr == 0 or stat:
         #     tauFlag = '              '; subFlag = '';
         #     if printTau, tauFlag = sprintf(' #%13.7e',tau);   end
@@ -485,64 +313,60 @@ def spgl1(A, b, tau=None, sigma=None, x=None, options=None):
         subspace = False
 
         # Update history info
-        if iterr > 0 and iterr % allocSize == 0:    # enlarge allocation
-            allocIncrement = min(allocSize, maxIts-xNorm1.shape[0])
+        if iterr > 0 and iterr % _allocSize == 0: # enlarge allocation
+            allocIncrement = min(_allocSize, maxIts-xNorm1.shape[0])
             xNorm1 = np.hstack((xNorm1, np.zeros(allocIncrement)))
             rNorm2 = np.hstack((rNorm2, np.zeros(allocIncrement)))
             lambdaa = np.hstack((lambdaa, np.zeros(allocIncrement)))
 
-
-        xNorm1[iterr] = options['primal_norm'](x,weights)
+        xNorm1[iterr] = primal_norm(x,weights)
         rNorm2[iterr] = rNorm
         lambdaa[iterr] = gNorm
 
         if stat:
             break
 
-        #%==================================================================
-        #% iterrations begin here.
-        #%==================================================================
-        iterr = iterr + 1;
+        # Iterations begin here.
+        iterr += 1
         xOld = x.copy()
         fOld = f.copy()
         gOld = g.copy()
         rOld = r.copy()
 
         try:
-            #%---------------------------------------------------------------
-            #% Projected gradient step and linesearch.
-            #%---------------------------------------------------------------
-
+            # Projected gradient step and linesearch.
             f,x,r,nLine,stepG,lnErr = \
-               spgLineCurvy(x,gStep*g,max(lastFv),Aprod,b,spglproject,weights,tau)
+               spgLineCurvy(x,gStep*g,max(lastFv),A,b,spglproject,weights,tau)
             nLineTot = nLineTot + nLine
             if lnErr:
-                #% Projected backtrack failed. Retry with feasible dirn linesearch.
-                x    = xOld.copy()
-                f    = fOld.copy()
-                dx  = spglproject(x - gStep*g, weights, tau) - x
-                gtd  = np.dot(np.conj(g),dx)
-                [f,x,r,nLine,lnErr] = spgLine(f,x,dx,gtd,max(lastFv),Aprod,b)
+                # Projected backtrack failed.
+                # Retry with feasible dirn linesearch.
+                x = xOld.copy()
+                f = fOld.copy()
+                dx = spglproject(x - gStep*g, weights, tau) - x
+                gtd = np.dot(np.conj(g),dx)
+                [f,x,r,nLine,lnErr] = spgLine(f,x,dx,gtd,max(lastFv),A,b)
                 nLineTot = nLineTot + nLine
 
             if lnErr:
-              #% Failed again. Revert to previous iterrates and damp max BB step.
+                # Failed again. Revert to previous iterrates and damp max BB step.
                 x = xOld
                 f = fOld
                 if maxLineErrors <= 0:
                     stat = EXIT_LINE_ERROR
                 else:
-                    stepMax = stepMax / 10.;
-                    logger.warning('Linesearch failed with error %s. Damping max BB scaling to %s', lnErr, stepMax)
-                    maxLineErrors = maxLineErrors - 1;
+                    stepMax = stepMax / 10.
+                    logger.warning('Linesearch failed with error %s. '
+                                   'Damping max BB scaling to %s', lnErr,
+                                   stepMax)
+                    maxLineErrors -= 1
 
-           #%---------------------------------------------------------------
-           #% Subspace minimization (only if active-set change is small).
-           #%---------------------------------------------------------------
+            # Subspace minimization (only if active-set change is small).
             doSubspaceMin = False
             if subspaceMin:
-                g = - Aprod(r,2)
-                nnzX,nnzG,nnzIdx,nnzDiff = activeVars(x,g,nnzOld,options)
+                g = - A.rmatvect(r)
+                nnzX,nnzG,nnzIdx,nnzDiff = activeVars(x,g,nnzOld, optTol,
+                                                      weights, dual_norm)
                 if not nnzDiff:
                     if nnzX == nnzG:
                         itnMaxLSQR = 20
@@ -552,7 +376,6 @@ def spgl1(A, b, tau=None, sigma=None, x=None, options=None):
                     doSubspaceMin = True
 
             if doSubspaceMin:
-
                 #% LSQR parameters
                 damp       = 1e-5
                 aTol       = 1e-1
@@ -572,13 +395,13 @@ def spgl1(A, b, tau=None, sigma=None, x=None, options=None):
                 if istop != 4:  #% LSQR iterrations successful. Take the subspace step.
                    #% Push dx back into full space:  dx = Z dx.
                     dx = np.zeros(n)
-                    dx[nnzIdx] = dxbar - (1/nebar)*dot(np.conj(ebar.T),dxbar).dot(dxbar)
+                    dx[nnzIdx] = dxbar - (1/nebar)*np.dot(np.conj(ebar.T),dxbar).dot(dxbar)
 
                     #% Find largest step to a change in sign.
                     block1 = nnzIdx  and  x < 0  and  dx > +pivTol
                     block2 = nnzIdx  and  x > 0  and  dx < -pivTol
-                    alpha1 = Inf
-                    alpha2 = Inf
+                    alpha1 = np.inf
+                    alpha2 = np.inf
                     if any(block1):
                         alpha1 = min(-x[block1] / dx[block1])
                     if any(block2):
@@ -591,18 +414,18 @@ def spgl1(A, b, tau=None, sigma=None, x=None, options=None):
 
                     #% Update variables.
                     x    = x + alpha*dx
-                    r    = b - Aprod(x,1)
+                    r    = b - A.matvec(x)
                     f    = abs(np.dot(np.conj(r),r)) / 2.
                     subspace = True
 
-            if options['primal_norm'](x,weights) > tau+optTol:
+            if primal_norm(x,weights) > tau+optTol:
                 print('ERROR: SPGL1: PRIMAL NORM OUT OF BOUNDS')
 
            #%---------------------------------------------------------------
            #% Update gradient and compute new Barzilai-Borwein scaling.
            #%---------------------------------------------------------------
             if not lnErr:
-                g    = - Aprod(r,2)
+                g    = - A.rmatvec(r)
                 s    = x - xOld
                 y    = g - gOld
                 sts  = np.dot(np.conj(s),s)
@@ -642,9 +465,9 @@ def spgl1(A, b, tau=None, sigma=None, x=None, options=None):
         rNorm = np.sqrt(2.*fBest)
         print('Restoring best iterrate to objective '+str(rNorm))
         x = xBest.copy()
-        r = b - Aprod(x,1)
-        g =   - Aprod(r,2)
-        gNorm = options['dual_norm'](g,weights)
+        r = b - A.matvec(x)
+        g =   - A.rmatvec(r)
+        gNorm = dual_norm(g,weights)
         rNorm = np.linalg.norm(r)
 
     #% Final cleanup before exit.
@@ -662,7 +485,7 @@ def spgl1(A, b, tau=None, sigma=None, x=None, options=None):
     info['timeProject'] = timeProject
     info['timeMatProd'] = timeMatProd
     info['itnLSQR']     = itnTotLSQR
-    info['options']     = options
+    ######info['options']     = options##### NEED TO FIX THIS!!!
 
     info['xNorm1']      = xNorm1[0:iterr]
     info['rNorm2']      = rNorm2[0:iterr]
@@ -706,7 +529,7 @@ def spgl1(A, b, tau=None, sigma=None, x=None, options=None):
 
 
 
-def spg_bp(A, b, options=None):
+def spg_bp(A, b, **kwargs):
 # %SPG_BP  Solve the basis pursuit (BP) problem
 # %
 # %   SPG_BP is designed to solve the basis pursuit problem
@@ -740,17 +563,15 @@ def spg_bp(A, b, options=None):
 # %   Copyright 2008, Ewout van den Berg and Michael P. Friedlander
 # %   http://www.cs.ubc.ca/labs/scl/spgl1
 # %   $Id: spg_bp.m 1074 2008-08-19 05:24:28Z ewout78 $
-    if options is None:
-        options= {}
     sigma = 0
     tau = 0
-    x0  = []
-    x,r,g,info = spgl1(A,b,tau,sigma,x0,options);
+    x0  = None
+    x,r,g,info = spgl1(A,b,tau,sigma,x0,**kwargs)
 
     return x,r,g,info
 
 
-def spg_bpdn(A, b, sigma, options=None):
+def spg_bpdn(A, b, sigma, **kwargs):
 # %SPG_BPDN  Solve the basis pursuit denoise (BPDN) problem
 # %
 # %   SPG_BPDN is designed to solve the basis pursuit denoise problem
@@ -785,11 +606,9 @@ def spg_bpdn(A, b, sigma, options=None):
 # %   Copyright 2008, Ewout van den Berg and Michael P. Friedlander
 # %   http://www.cs.ubc.ca/labs/scl/spgl1
 # %   $Id: spg_bpdn.m 1389 2009-05-29 18:32:33Z mpf $
-    if options is None:
-        options= {}
     tau = 0
-    x0  = []
-    return spgl1(A,b,tau,sigma,x0,options)
+    x0  = None
+    return spgl1(A,b,tau,sigma,x0, **kwargs)
 
 
 def spg_lasso(A, b, tau, options=None):
@@ -826,74 +645,50 @@ def spg_lasso(A, b, tau, options=None):
     # %   http://www.cs.ubc.ca/labs/scl/spgl1
     # %   $Id: spg_lasso.m 1074 2008-08-19 05:24:28Z ewout78 $
     if options is None:
-        options= {}
+        options = {}
     sigma = 0
-    x0  = []
+    x0  = None
     return spgl1(A,b,tau,sigma,x0,options)
 
 
-def spg_mmv(A, B, sigma=0, options=None):
-    if options is None:
-        options= {}
+def spg_mmv(A, B, sigma=0, **kwargs):
+    A = aslinearoperator(A)
+    m, n = A.shape
     groups = B.shape[1]
-
-    if isfunction(A):
-        raise NotImplementedError()     # implement blockDiagonalImplicit
-    else:
-        m = A.shape[0]
-        n = A.shape[1]
-        A_fh = lambda x, mode: blockDiagonalExplicit(A, m, n, groups, x, mode)
+    A_fh = _blockdiag(A, m, n, groups)
 
     # Set projection specific functions
-    options['project']     = lambda x, weight, tau: NormL12_project(groups, x, weight, tau)
-    options['primal_norm'] = lambda x, weight:      NormL12_primal(groups, x, weight)
-    options['dual_norm']   = lambda x, weight:      NormL12_dual(groups, x, weight)
+    project = lambda x, weight, tau: NormL12_project(groups, x, weight, tau)
+    primal_norm = lambda x, weight: NormL12_primal(groups, x, weight)
+    dual_norm = lambda x, weight: NormL12_dual(groups, x, weight)
 
     tau = 0
-    x0  = []
-    x, r, g, info = spgl1(A_fh, B.flatten(1), tau, sigma, x0, options)
+    x0  = None
+    x, r, g, info = spgl1(A_fh, B.ravel(), tau, sigma, x0, project=project,
+                          primal_norm=primal_norm, dual_norm=dual_norm,
+                          **kwargs)
 
-    n = np.round(x.shape[0] / groups)
-    m = B.shape[0]
+    #n = np.round(x.shape[0] / groups)
+    #m = B.shape[0]
     x = reshape_rowwise(x, n, groups)
     g = reshape_rowwise(g, n, groups)
 
     return x, r, g, info
 
-def blockDiagonalExplicit(A, m, n, g, x, mode):
-    if mode == 1:
-       x = reshape_rowwise(x, n, g)
-       y = A.dot(x)
-       y = y.flatten(1)
-    else:
-       x = reshape_rowwise(x, m, g)
-       y = np.dot(x.conj().transpose(), A).conj().transpose()
-       y = y.flatten(1)
-    return y
-
-
-
-# def fakeFourier(idx,n,x,mode):
-#     # %PARTIALFOURIER  Partial Fourier operator
-#     # %
-#     # % Y = PARTIALFOURIER(IDX,N,X,MODE)
-
-#     if mode==1:
-#         z = np.fft.fft(x) / np.sqrt(n)
-#         return z[idx].flatten()
-#     else:
-#         z = np.zeros(n,dtype=complex)
-#         z[idx] = x
-#         return np.fft.ifft(z) * np.sqrt(n)
-
-
-# m=50
-# n=128
-# k=14
-# A,Rtmp = qr(np.random.randn(n,m))
-# A=A.T
-# p = permutation(n)
-# p=p[0:k]
-# x0=zeros(n)
-# x0[p]=random.randn(k)
-# b=dot(A,x0)
+class _blockdiag(LinearOperator):
+    def __init__(self, A, m, n, g):
+        self.m = m
+        self.n = n
+        self.g = g
+        self.A = A
+        self.AH = A.H
+        self.shape = (m*g, n*g)
+        self.dtype = A.dtype
+    def _matvec(self, x):
+        x = reshape_rowwise(x, self.n, self.g)
+        y = self.A.matmat(x)
+        return y.ravel()
+    def _rmatvec(self, x):
+        x = reshape_rowwise(x, self.m, self.g)
+        y = self.AH.matmat(x)
+        return y.ravel()

@@ -1,0 +1,16 @@
+numpy>=1.15.0
+scipy
+numba
+pyfftw
+matplotlib
+ipython
+jupyter
+pytest
+pytest-runner
+setuptools_scm
+Sphinx
+sphinx-rtd-theme
+sphinx-gallery
+numpydoc
+nbsphinx
+image

@@ -127,7 +127,7 @@ def lsqr( m, n, A, b, damp, atol, btol, conlim, itnlim, show ):
     beta = np.linalg.norm( u )
     if beta > 0:
         u = u/beta
-        v = Aprod(u,2)
+        v = A.H*u
         alfa = np.linalg.norm( v )
     if alfa > 0:
         v = v/alfa
@@ -168,12 +168,12 @@ def lsqr( m, n, A, b, damp, atol, btol, conlim, itnlim, show ):
         # %                beta*u  =  a*v   -  alfa*u,
         # %                alfa*v  =  A'*u  -  beta*v.'
 
-        u    = Aprod(v,1)  -  alfa*u
+        u    = A*v  -  alfa*u
         beta = np.linalg.norm( u )
         if beta > 0:
             u     = u/beta
             anorm = np.linalg.norm([anorm,alfa,beta,damp])
-            v     = Aprod(u, 2)  -  beta*v
+            v     = A.H*u  -  beta*v
             alfa  = np.linalg.norm( v )
             if alfa > 0:
                 v = v/alfa
