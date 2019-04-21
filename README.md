@@ -55,5 +55,5 @@ The algorithm implemented by SPGL1 is described in these two papers
 
 # Credits
 
-David Relyea - drrelyea@gmail.com
-Matteo Ravasi - mrava87
+- David Relyea - drrelyea@gmail.com
+- Matteo Ravasi - mrava87
