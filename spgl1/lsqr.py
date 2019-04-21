@@ -1,7 +1,7 @@
 from __future__ import division
 import numpy as np
 
-def lsqr( m, n, A, b, damp, atol, btol, conlim, itnlim, show ):
+def lsqr( m, n, Aprod, b, damp, atol, btol, conlim, itnlim, show ):
 # // %
 # // % LSQR solves  Ax = b  or  min ||b - Ax||_2  if damp = 0,
 # // % or   min || (b)  -  (  A   )x ||   otherwise.
@@ -75,37 +75,40 @@ def lsqr( m, n, A, b, damp, atol, btol, conlim, itnlim, show ):
 # // %              Ewout van den Berg, University of British Columbia
 # // %-----------------------------------------------------------------------
 
+    nprodA = 0
+    nprodAT = 0
+
 # // %     Initialize.
+    msg = ('The exact solution is  x = 0                              ',
+           'Ax - b is small enough, given atol, btol                  ',
+           'The least-squares solution is good enough, given atol     ',
+           'The estimate of cond(Abar) has exceeded conlim            ',
+           'Ax - b is small enough for this machine                   ',
+           'The least-squares solution is good enough for this machine',
+           'Cond(Abar) seems to be too large for this machine         ',
+           'The iteration limit has been reached                      ')
 
-# // msg=['The exact solution is  x = 0                              '
-# //      'Ax - b is small enough, given atol, btol                  '
-# //      'The least-squares solution is good enough, given atol     '
-# //      'The estimate of cond(Abar) has exceeded conlim            '
-# //      'Ax - b is small enough for this machine                   '
-# //      'The least-squares solution is good enough for this machine'
-# //      'Cond(Abar) seems to be too large for this machine         '
-# //      'The iteration limit has been reached                      '];
+    wantvar = True
+    var = np.zeros(n)
 
-    wantvar = nargout >= 6
-    if wantvar:
-        var = np.zeros(n)
-
-    # if show
-    #    disp(' ')
-    #    disp('LSQR            Least-squares solution of  Ax = b')
-    #    str1 = sprintf('The matrix A has %8g rows  and %8g cols', m, n);
-    #    str2 = sprintf('damp = %20.14e    wantvar = %8g', damp,wantvar);
-    #    str3 = sprintf('atol = %8.2e                 conlim = %8.2e', atol, conlim);
-    #    str4 = sprintf('btol = %8.2e                 itnlim = %8g'  , btol, itnlim);
-    #    disp(str1);   disp(str2);   disp(str3);   disp(str4);
-    # end
+    if show:
+        print(' ')
+        print('LSQR            Least-squares solution of  Ax = b')
+        str1 = 'The matrix A has %8g rows  and %8g cols' % (m, n)
+        str2 = 'damp = %20.14e    wantvar = %8g' %(damp,wantvar)
+        str3 = 'atol = %8.2e                 conlim = %8.2e' %(atol, conlim)
+        str4 = 'btol = %8.2e                 itnlim = %8g' %(btol, itnlim)
+        print(str1)
+        print(str2)
+        print(str3)
+        print(str4)
 
     itn    = 0
     istop  = 0
     nstop  = 0
     ctol   = 0
     if conlim > 0:
-        ctol = 1./conli
+        ctol = 1./conlim
     anorm  = 0
     acond  = 0
     dampsq = damp**2.0
@@ -127,7 +130,8 @@ def lsqr( m, n, A, b, damp, atol, btol, conlim, itnlim, show ):
     beta = np.linalg.norm( u )
     if beta > 0:
         u = u/beta
-        v = A.H*u
+        v = Aprod(u,2)
+        nprodAT+=1
         alfa = np.linalg.norm( v )
     if alfa > 0:
         v = v/alfa
@@ -145,18 +149,18 @@ def lsqr( m, n, A, b, damp, atol, btol, conlim, itnlim, show ):
     rnorm  = beta
     r1norm = rnorm
     r2norm = rnorm
-    # head1  = '   Itn      x(1)       r1norm     r2norm ';
-    # head2  = ' Compatible   LS      Norm A   Cond A';
+    head1  = '   Itn      x(1)       r1norm     r2norm '
+    head2  = ' Compatible   LS      Norm A   Cond A'
 
-    # if show
-    #    disp(' ')
-    #    disp([head1 head2])
-    #    test1  = 1;      test2  = alfa / beta;
-    #    str1   = sprintf( '%6g %12.5e',        itn,   x(1) );
-    #    str2   = sprintf( ' %10.3e %10.3e', r1norm, r2norm );
-    #    str3   = sprintf( '  %8.1e %8.1e',   test1,  test2 );
-    #    disp([str1 str2 str3])
-    # end
+    if show:
+        print(' ')
+        print(head1 + head2)
+        test1  = 1
+        test2  = alfa / beta
+        str1   = '%6g %12.5e' %(itn,   x[0])
+        str2   = ' %10.3e %10.3e' %(r1norm, r2norm)
+        str3   = '  %8.1e %8.1e' %(test1,  test2 )
+        print(str1+str2+str3)
 
     # %------------------------------------------------------------------
     # %     Main iteration loop.
@@ -168,12 +172,14 @@ def lsqr( m, n, A, b, damp, atol, btol, conlim, itnlim, show ):
         # %                beta*u  =  a*v   -  alfa*u,
         # %                alfa*v  =  A'*u  -  beta*v.'
 
-        u    = A*v  -  alfa*u
+        u    = Aprod(v,1)  -  alfa*u
+        nprodA+=1
         beta = np.linalg.norm( u )
         if beta > 0:
             u     = u/beta
             anorm = np.linalg.norm([anorm,alfa,beta,damp])
-            v     = A.H*u  -  beta*v
+            v     = Aprod(u, 2)  -  beta*v
+            nprodAT+=1
             alfa  = np.linalg.norm( v )
             if alfa > 0:
                 v = v/alfa
@@ -282,47 +288,55 @@ def lsqr( m, n, A, b, damp, atol, btol, conlim, itnlim, show ):
             istop = 3
         if  test2 <= atol:
             istop = 2
-        # %     if  test1 <= rtol,  istop = 1; end
+        if  test1 <= rtol:
+            istop = 1
 
         # %     See if it is time to print something.
+        if show:
+            prnt = 0;
+            if n <= 40:
+                prnt = 1
+            if itn   <= 10:
+                prnt = 1
+            if itn   >= itnlim-10:
+                prnt = 1
+            if itn % 10 == 0:
+                prnt = 1
+            if test3 <=  2*ctol:
+                prnt = 1
+            if test2 <= 10*atol:
+                prnt = 1
+            if test1 <= 10*rtol:
+                prnt = 1
+            if istop !=  0:
+                prnt = 1
 
-        # prnt = 0;
-        # if n     <= 40       , prnt = 1; end
-        # if itn   <= 10       , prnt = 1; end
-        # if itn   >= itnlim-10, prnt = 1; end
-        # if rem(itn,10) == 0  , prnt = 1; end
-        # if test3 <=  2*ctol  , prnt = 1; end
-        # if test2 <= 10*atol  , prnt = 1; end
-        # # %     if test1 <= 10*rtol  , prnt = 1; end
-        # if istop ~=  0       , prnt = 1; end
-
-        # if prnt == 1
-        #  if show
-        #     str1 = sprintf( '%6g %12.5e',        itn,   x(1) );
-        #     str2 = sprintf( ' %10.3e %10.3e', r1norm, r2norm );
-        #     str3 = sprintf( '  %8.1e %8.1e',   test1,  test2 );
-        #     str4 = sprintf( ' %8.1e %8.1e',    anorm,  acond );
-        #     disp([str1 str2 str3 str4])
-        #  end
-        # end
+            if prnt == 1:
+                str1 = '%6g %12.5e' %(itn, x[0])
+                str2 = ' %10.3e %10.3e' %(r1norm, r2norm )
+                str3 = '  %8.1e %8.1e' %(test1,  test2 )
+                str4 = ' %8.1e %8.1e' %(anorm,  acond )
+                print(str1+str2+str3+str4)
         if istop > 0:
             break
 
     # %     End of iteration loop.
     # %     Print the stopping condition.
+    if show:
+        print(' ')
+        print('LSQR finished')
+        print(msg[istop])
+        print(' ')
+        str1 = 'istop =%8g   r1norm =%8.1e' %(istop, r1norm )
+        str2 = 'anorm =%8.1e   arnorm =%8.1e' %(anorm, arnorm )
+        str3 = 'itn   =%8g   r2norm =%8.1e' %(itn, r2norm )
+        str4 = 'acond =%8.1e   xnorm  =%8.1e' %( acond, xnorm )
+        print(str1 +'   '+ str2)
+        print(str3 +'   '+ str4)
+        print(' ')
+        # end
 
-    # if show
-    #    disp(' ')
-    #    disp('LSQR finished')
-    #    disp(msg(istop+1,:))
-    #    disp(' ')
-    #    str1 = sprintf( 'istop =%8g   r1norm =%8.1e',   istop, r1norm );
-    #    str2 = sprintf( 'anorm =%8.1e   arnorm =%8.1e', anorm, arnorm );
-    #    str3 = sprintf( 'itn   =%8g   r2norm =%8.1e',     itn, r2norm );
-    #    str4 = sprintf( 'acond =%8.1e   xnorm  =%8.1e', acond, xnorm  );
-    #    disp([str1 '   ' str2])
-    #    disp([str3 '   ' str4])
-    #    disp(' ')
-    # end
+    print('nprodA', nprodA)
+    print('nprodA', nprodAT)
 
     return x, istop, itn, r1norm, r2norm, anorm, acond, arnorm, xnorm, var

@@ -2,17 +2,35 @@ import pytest
 import numpy as np
 
 from numpy.testing import assert_array_almost_equal
-from scipy.sparse import spdiags
+from scipy.sparse import spdiags, csr_matrix
 from spgl1 import spg_lasso, spg_bp, spg_bpdn, spg_mmv
 
-par1 = {'n': 50, 'm': 50, 'k': 14} # square
-par2 = {'n': 128, 'm': 50, 'k': 14} # overdetermined
-par3 = {'n': 50, 'm': 100, 'k': 14} # underdetermined
+from scipy.sparse.linalg import lsqr as splsqr
+from spgl1.lsqr import lsqr
 
-np.random.seed(10)
 
-@pytest.mark.parametrize("par", [(par1), (par2), (par3)])
-def test_Lasso(par):
+# dense matrix
+par1 = {'n': 50, 'm': 50, 'k': 14,
+        'sparse': False} # square
+par2 = {'n': 128, 'm': 50, 'k': 14,
+        'sparse': False} # underdetermined
+par3 = {'n': 50, 'm': 100, 'k': 14,
+        'sparse': False} # overdetermined
+
+# sparse matrix
+par1_sp = {'n': 50, 'm': 50, 'k': 14,
+           'sparse': False} # square
+par2_sp = {'n': 128, 'm': 50, 'k': 14,
+           'sparse': False} # underdetermined
+par3_sp = {'n': 50, 'm': 100, 'k': 14,
+           'sparse': False} # overdetermined
+
+np.random.seed(1)
+
+
+@pytest.mark.parametrize("par", [(par1), (par2), (par3),
+                                 (par1_sp), (par2_sp), (par3_sp)])
+def test_lasso(par):
     """LASSO problem for ||x||_1 <= pi:
 
     minimize ||Ax-b||_2 subject to ||x||_1 <= 3.14159...
@@ -25,6 +43,8 @@ def test_Lasso(par):
     A, A1 = np.linalg.qr(np.random.randn(n, m), 'reduced')
     if m > n:
         A = A1.copy()
+    if par['sparse']:
+        A = csr_matrix(A)
 
     # Create sparse vector
     p = np.random.permutation(m)
@@ -40,8 +60,9 @@ def test_Lasso(par):
     assert np.linalg.norm(xinv, 1) - np.pi < 1e-10
 
 
-@pytest.mark.parametrize("par", [(par1), (par2), (par3)])
-def test_BP(par):
+@pytest.mark.parametrize("par", [(par1), (par2), (par3),
+                                 (par1_sp), (par2_sp), (par3_sp)])
+def test_bp(par):
     """Basis pursuit (BP) problem:
 
     minimize ||x||_1 subject to Ax = b
@@ -69,8 +90,9 @@ def test_BP(par):
     assert_array_almost_equal(x, xinv, decimal=3)
 
 
-@pytest.mark.parametrize("par", [(par1), (par3)])
-def test_BPDN(par):
+@pytest.mark.parametrize("par", [(par1), (par3),
+                                 (par1_sp), (par3_sp)])
+def test_bpdn(par):
     """Basis pursuit denoise (BPDN) problem:
 
     minimize ||x||_1 subject to ||Ax - b||_2 <= 0.1
@@ -100,8 +122,9 @@ def test_BPDN(par):
     assert np.linalg.norm(resid) < sigma*1.1 # need to check why resid is slighly bigger than sigma
 
 
-@pytest.mark.parametrize("par", [(par1), (par2), (par3)])
-def test_BPcomplex(par):
+@pytest.mark.parametrize("par", [(par1), (par2), (par3),
+                                 (par1_sp), (par2_sp), (par3_sp)])
+def test_bp_complex(par):
     """Basis pursuit (BP) problem for complex variables:
 
     minimize ||x||_1 subject to Ax = b
@@ -129,8 +152,9 @@ def test_BPcomplex(par):
     assert_array_almost_equal(x, xinv, decimal=3)
 
 
-@pytest.mark.parametrize("par", [(par1), (par2), (par3)])
-def test_WeightedBP(par):
+@pytest.mark.parametrize("par", [(par1), (par2), (par3),
+                                 (par1_sp), (par2_sp), (par3_sp)])
+def test_weighted_bp(par):
     """Weighted Basis pursuit (WBP) problem:
 
     minimize ||y||_1 subject to AW^{-1}y = b
@@ -166,8 +190,9 @@ def test_WeightedBP(par):
     assert_array_almost_equal(x, xinv, decimal=3)
 
 
-@pytest.mark.parametrize("par", [(par1), (par2), (par3)])
-def test_MultipleMeasurements(par):
+@pytest.mark.parametrize("par", [(par1), (par2), (par3),
+                                 (par1_sp), (par2_sp), (par3_sp)])
+def test_multiple_measurements(par):
     """Multiple measurement vector (MMV) problem:
 
     minimize ||Y||_1,2 subject to AW^{-1}Y = B
@@ -198,3 +223,42 @@ def test_MultipleMeasurements(par):
 
     assert_array_almost_equal(X, X_uw, decimal=2)
     assert_array_almost_equal(X, X_w, decimal=2)
+
+
+# temporary tests... will not be included in scipy later on
+@pytest.mark.parametrize("par", [(par1), (par3),
+                                 (par1_sp), (par3_sp)])
+def test_lsqr(par):
+    """Compare local LSQR with scipy LSQR
+    """
+    def Aprodfun(A, x, mode):
+        if mode == 1:
+            y = np.dot(A, x)
+        else:
+            return np.dot(np.conj(A.T), x)
+        return y
+
+    # Create random m-by-n encoding matrix
+    m = par['m']
+    n = par['n']
+    A = np.random.normal(0, 1, (m, n))
+    Aprod = lambda x, mode: Aprodfun(A, x, mode)
+    x = np.ones(n)
+    y = A.dot(x)
+
+    damp = 1e-10
+    atol = 1e-10
+    btol = 1e-10
+    conlim = 1e12
+    itn_max = 500
+    show = 2
+
+    xinv, istop, itn, r1norm, r2norm, anorm, acond, arnorm, xnorm, var = \
+        lsqr(m, n, Aprod, y, damp, atol, btol, conlim, itn_max, show)
+
+    xinv_sp, istop_sp, itn_sp, r1norm_sp, r2norm_sp, anorm_sp, \
+    acond_sp, arnorm_sp, xnorm_sp, var_sp = \
+        splsqr(A, y, damp, atol, btol, conlim, itn_max, show)
+
+    assert_array_almost_equal(xinv, x, decimal=2)
+    assert_array_almost_equal(xinv_sp, x, decimal=2)

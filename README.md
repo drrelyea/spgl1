@@ -49,8 +49,8 @@ The algorithm implemented by SPGL1 is described in these two papers
   for basis pursuit solutions", SIAM J. on Scientific Computing,
   31(2):890-912, November 2008
 
-- Sparse optimization with least-squares constraints E. van den Berg
-  and M. P. Friedlander, Tech. Rep. TR-2010-02, Dept of Computer
+- E. van den Berg and M. P. Friedlander, "Sparse optimization with
+  least-squares constraints", Tech. Rep. TR-2010-02, Dept of Computer
   Science, Univ of British Columbia, January 2010
 
 # Credits
