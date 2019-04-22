@@ -4,80 +4,14 @@ from scipy.sparse import spdiags
 from scipy.sparse.linalg.interface import aslinearoperator
 from spgl1.oneProjector import oneProjector
 
-def spgSetParms(inputdictionary):
-# %SPGSETPARMS  Set options for SPGL1
-# %
-# %   options = spgSetParms('param1',val1,'param2',val2,...) creates an
-# %   options structure in which the named parameters have the specified
-# %   values.  Unspecified parameters are empty and their default
-# %   values are used.
-# %
-# %   spgSetParms with no input arguments and no output arguments
-# %   displays all parameter names and their possible values.
-# %
-# %   options = spgSetParms (with no input arguments) creates an options
-# %   structure where all the fields are empty.
-# %
-# %   spgSetParms.m
-# %   $Id: spgSetParms.m 1407 2009-06-30 20:00:54Z ewout78 $
 
-# % Print out possible values of properties.
-    if not inputdictionary:
-        print(' Default parameters for l1Set.m:')
-        print('        fid : [ positive integer        |     1 ]')
-        print('  verbosity : [ integer: 1, 2, or 3     |     3 ]')
-        print(' iterations : [ positive integer        |  10*m ]')
-        print('  nPrevVals : [ positive integer        |    10 ]')
-        print('      bpTol : [ positive scalar         | 1e-06 ]')
-        print('      lsTol : [ positive scalar         | 1e-06 ]')
-        print('     optTol : [ positive scalar         | 1e-04 ]')
-        print('     decTol : [ positive scalar         | 1e-04 ]')
-        print('    stepMin : [ positive scalar         | 1e-16 ]')
-        print('    stepMax : [ positive scalar         | 1e+05 ]')
-        print(' rootMethod : [ 1=linear, 2=quadratic   |     2 ]')
-        print('activeSetIt : [ positive integer        |   Inf ]')
-        print('subspaceMin : [ 0=no, 1=yes             |     0 ]')
-        print('  iscomplex : [ 0=no, 1=yes, NaN=auto   |   NaN ]')
-        print('  maxMatvec : [ positive integer        |   Inf ]')
-        print('    weights : [ vector                  |     1 ]')
-        print('    project : [ projection function     |    @()]')
-        print('primal_norm : [ primal norm eval fun    |    @()]')
-        print('  dual_norm : [ dual norm eval fun      |    @()]')
-        print('')
-        return
-
-    Names = [
-      'fid',\
-      'verbosity',\
-      'iterations',\
-      'nPrevVals',\
-      'bpTol',\
-      'lsTol',\
-      'optTol',\
-      'decTol',\
-      'stepMin',\
-      'stepMax',\
-      'rootMethod',\
-      'activeSetIt',\
-      'subspaceMin',\
-      'iscomplex',\
-      'maxMatvec',\
-      'weights',\
-      'project',\
-      'primal_norm',\
-      'dual_norm',\
-    ]
-
-    # % Combine all leading options structures o1, o2, ... in l1Set(o1,o2,...).
-    options = {xx:[] for xx in Names}
-
-    for arg in inputdictionary:
-        if arg in options:
-            options[arg]=inputdictionary[arg]
-        else:
-            print('ERROR PARAMETER SETTING: INCORRECT PARAMETER: '+arg)
-
-    return options
+def _printf(fid, message):
+    """Print a message in file (fid=file ID) or on screen (fid=None)
+    """
+    if fid is None:
+        print(message)
+    else:
+        fid.write(message)
 
 def reshape_rowwise(arr, m, n):
     return arr.reshape(np.int64(m), np.int64(n))
@@ -291,41 +225,41 @@ def LSQRprod(A,nnzIdx,ebar,n,dx,mode):
     if mode == 1:
         y = np.zeros(n)
         y[nnzIdx] = dx - (1./nbar)*np.dot(np.dot(np.conj(ebar),dx),ebar) #% y(nnzIdx) = Z*dx '
-        z = A.matvec(y) #                           % z = S Z dx
+        z = A.matvec(y) # z = S Z dx
     else:
         y = A.rmatvect(dx)
         z = y[nnzIdx] - (1./nbar)*np.dot(np.dot(np.conj(ebar),y[nnzIdx]),ebar)
     return z
 
-def activeVars(x,g,nnzIdx, optTol,
+def activeVars(x, g, nnzIdx, optTol,
                weights, dual_norm):
     # % Find the current active set.
     # % nnzX    is the number of nonzero x.
     # % nnzG    is the number of elements in nnzIdx.
     # % nnzIdx  is a vector of primal/dual indicators.
     # % nnzDiff is the no. of elements that changed in the support.
-    xTol    = min([.1,10.*optTol])
-    gTol    = min([.1,10.*optTol])
-    gNorm   = dual_norm(g, weights)
-    nnzOld  = np.copy(nnzIdx)
+    xTol = min([.1, 10.*optTol])
+    gTol = min([.1, 10.*optTol])
+    gNorm = dual_norm(g, weights)
+    nnzOld = nnzIdx
 
-    # % Reduced costs for postive & negative parts of x.
+    # Reduced costs for positive and negative parts of x.
     z1 = gNorm + g
     z2 = gNorm - g
 
-    # % Primal/dual based indicators.
-    xPos    = (x >  xTol)  &  (z1 < gTol) #%g < gTol%
-    xNeg    = (x < -xTol)  &  (z2 < gTol) #%g > gTol%
-    nnzIdx  = xPos | xNeg
+    # Primal/dual based indicators.
+    xPos = (x >  xTol) & (z1 < gTol)
+    xNeg = (x < -xTol) & (z2 < gTol)
+    nnzIdx = xPos | xNeg
 
     # % Count is based on simple primal indicator.
-    nnzX    = np.sum(abs(x) >= xTol)
-    nnzG    = np.sum(nnzIdx)
+    nnzX = np.sum(np.abs(x) >= xTol)
+    nnzG = np.sum(nnzIdx)
 
-    if np.size(nnzOld)==0:
+    if nnzOld is None:
         nnzDiff = np.inf
     else:
         nnzDiff = np.sum(nnzIdx != nnzOld)
 
-    return nnzX,nnzG,nnzIdx,nnzDiff
+    return nnzX, nnzG, nnzIdx, nnzDiff
 
