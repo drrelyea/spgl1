@@ -3,18 +3,16 @@ import logging
 import time
 import numpy as np
 
-from scipy.sparse.linalg import aslinearoperator, LinearOperator
-from scipy.sparse.linalg import lsqr
-#from spgl1.lsqr import lsqr
-from spgl1.spgl_aux import NormL12_project, NormL12_primal, NormL12_dual, \
-                           NormL1_project,  NormL1_primal,  NormL1_dual, \
-                           activeVars, spgLineCurvy, spgLine, reshape_rowwise,\
-                           _printf
+from scipy.sparse import spdiags
+from scipy.sparse.linalg import aslinearoperator, LinearOperator, lsqr
 
 logger = logging.getLogger(__name__)
 
 # Size of info vector in case of infinite iterations
 _allocSize = 10000
+
+# Machine epsilon
+_eps = np.spacing(1)
 
 # Exit conditions (constants).
 EXIT_ROOT_FOUND = 1
@@ -26,28 +24,12 @@ EXIT_LINE_ERROR = 6
 EXIT_SUBOPTIMAL_BP = 7
 EXIT_MATVEC_LIMIT = 8
 EXIT_ACTIVE_SET = 9
+EXIT_CONVERGED_spgline = 0
+EXIT_ITERATIONS_spgline = 1
+EXIT_NODESCENT_spgline = 2
 
 
-
-class _blockdiag(LinearOperator):
-    def __init__(self, A, m, n, g):
-        self.m = m
-        self.n = n
-        self.g = g
-        self.A = A
-        self.AH = A.H
-        self.shape = (m*g, n*g)
-        self.dtype = A.dtype
-    def _matvec(self, x):
-        x = reshape_rowwise(x, self.n, self.g)
-        y = self.A.matmat(x)
-        return y.ravel()
-    def _rmatvec(self, x):
-        x = reshape_rowwise(x, self.m, self.g)
-        y = self.AH.matmat(x)
-        return y.ravel()
-
-
+# private classes
 class _LSQRprod(LinearOperator):
     def __init__(self, A, nnzIdx, ebar, n):
         self.A = A
@@ -59,9 +41,9 @@ class _LSQRprod(LinearOperator):
         self.dtype = A.dtype
     def _matvec(self, x):
         y = np.zeros(self.n)
-        y[self.nnzIdx] = x - \
-                         (1. / self.nbar) * np.dot(np.dot(np.conj(self.ebar),
-                                                          x), self.ebar)
+        y[self.nnzIdx] = \
+            x - (1. / self.nbar) * np.dot(np.dot(np.conj(self.ebar),
+                                                 x), self.ebar)
         z = self.A.matvec(y)
         return z
     def _rmatvec(self, x):
@@ -71,14 +53,373 @@ class _LSQRprod(LinearOperator):
                                              y[self.nnzIdx]), self.ebar)
         return z
 
+class _blockdiag(LinearOperator):
+    """Block-diagonal operator.
+
+    This operator is created to work with the spg_mmv solver, which solves
+    a multi-measurement basis pursuit denoise problem. Model and data are
+    effectively matrices of size ``n x g`` and ``m x g`` respectively,
+    and the operator A is applied to each column of the vectors.
+    """
+    def __init__(self, A, m, n, g):
+        self.m = m
+        self.n = n
+        self.g = g
+        self.A = A
+        self.AH = A.H
+        self.shape = (m*g, n*g)
+        self.dtype = A.dtype
+    def _matvec(self, x):
+        x = x.reshape(self.n, self.g)
+        y = self.A.matmat(x)
+        return y.ravel()
+    def _rmatvec(self, x):
+        x = x.reshape(self.m, self.g)
+        y = self.AH.matmat(x)
+        return y.ravel()
+
+# private methods
+def _printf(fid, message):
+    """Print a message in file (fid=file ID) or on screen (fid=None)
+    """
+    if fid is None:
+        print(message)
+    else:
+        fid.write(message)
+
+def _norm_l1_primal(x, weights):
+    """L1 norm with weighted input vector
+    """
+    return np.linalg.norm(x*weights, 1)
+
+def _norm_l1_dual(x,weights):
+    """L_inf norm with weighted input vector (dual to L1 norm)
+    """
+    return np.linalg.norm(x/weights, np.inf)
+
+def _norm_l1_project(x, weights, tau):
+    """Projection onto the one-norm ball
+    """
+    if np.all(np.isreal(x)):
+        xproj = _oneprojector(x, weights, tau)
+    else:
+        xa = np.abs(x)
+        idx = xa < _eps
+        xc = _oneprojector(xa, weights, tau)
+        xc /= xa
+        xc[idx] = 0
+        xproj = x * xc
+    return xproj
+
+def _norm_l12_primal(g, x, weights):
+    """L1 norm with weighted input vector with number of groups equal to g
+    """
+    m = x.size // g
+    if all(np.isreal(x)):
+        nrm = np.sum(weights*np.sqrt(np.sum(x.reshape(m, g)**2, axis=1)))
+    else:
+        nrm = np.sum(weights*np.sqrt(np.sum(np.abs(x.reshape(m, g))**2,
+                                            axis=1)))
+    return nrm
+
+def _norm_l12_dual(g, x, weights):
+    """L_inf norm with weighted input vector with number of groups equal to g
+    """
+    m = len(x) // g
+    n = g
+
+    if all(np.isreal(x)):
+        return np.linalg.norm(np.sqrt(np.sum(x.reshape(m,n)**2,
+                                             axis=1))/weights, np.inf)
+    else:
+        return np.linalg.norm(np.sqrt(np.sum(np.abs(x.reshape(m,n))**2,
+                                             axis=1))/weights, np.inf)
+
+def _norm_l12_project(g, x, weights, tau):
+    """Projection with number of groups equal to g
+    """
+    m = x.size // g
+    x = x.reshape(m, g)
+
+    if np.all(np.isreal(x)):
+        xa  = np.sqrt(np.sum(x**2, axis=1))
+    else:
+        xa  = np.sqrt(np.sum(abs(x)**2, axis=1))
+
+    idx = xa < np.spacing(1)
+    xc  = _oneprojector(xa, weights, tau)
+    xc  = xc / xa
+    xc[idx] = 0
+    x = spdiags(xc, 0, m, m)*x
+    return x.flatten()
+
+def _norm_l1nn_primal(x, weights):
+    # Non-negative L1 gauge function
+    p = np.linalg.norm(x*weights, 1)
+    if any(x < 0):
+        p = np.inf
+    return p
+
+def _norm_l1nn_dual(x,weights):
+    # Dual of non-negative L1 gauge function
+    xx = x.copy()
+    xx[xx<0] = 0
+    return np.linalg.norm(xx/weights, np.inf)
+
+def _norm_l1nn_project(x, weights, tau):
+    """Projection onto the non-negative part of the one-norm ball
+    """
+    xx = x.copy()
+    xx[xx < 0] = 0
+    return _norm_l1_project(xx,weights,tau)
+
+def _oneprojector_i(b,tau):
+    n     = np.size(b)
+    x     = np.zeros(n)
+    bNorm = np.linalg.norm(b,1)
+
+    if (tau >= bNorm):
+        return b.copy()
+    if (tau <  np.spacing(1)  ):
+        return x.copy()
+
+    idx = np.argsort(b)[::-1]
+    b = b[idx]
+
+    alphaPrev = 0.
+    csb = np.cumsum(b) - tau
+    alpha = np.zeros(n+1)
+    alpha[1:]     = csb / (np.arange(n)+1.0)
+
+    alphaindex = np.where(alpha[1:] >= b)
+    if alphaindex[0].any():
+        alphaPrev = alpha[alphaindex[0][0]]
+    else:
+        alphaPrev = alpha[-1]
+
+    x[idx] = b - alphaPrev
+    x[x<0]=0
+
+    return x
+
+def _oneprojector_d(b,d,tau):
+    n = np.size(b)
+    x = np.zeros(n)
+
+    if (tau >= np.linalg.norm(d*b, 1)):
+        return b.copy()
+    if (tau <  np.spacing(1)):
+        return x.copy()
+
+    idx = np.argsort(b / d)[::-1]
+    b  = b[idx]
+    d  = d[idx]
+
+    csdb = np.cumsum(d*b)
+    csd2 = np.cumsum(d*d)
+    alpha1 = (csdb-tau)/csd2
+    alpha2 = b/d
+    ggg = np.where(alpha1>=alpha2)
+    if(np.size(ggg[0])==0):
+        i=n
+    else:
+        i=ggg[0][0]
+    if(i>0):
+        soft = alpha1[i-1]
+        x[idx[0:i]] = b[0:i] - d[0:i] * max(0,soft);
+    else:
+        soft = 0
+
+    return x
+
+def _oneprojector_di(b, d, tau=None):
+    if tau is None:
+        tau = d
+        d = 1
+    if np.isscalar(d):
+        return _oneprojector_i(b, tau/abs(d))
+    else:
+        return _oneprojector_d(b, d, tau)
+
+def _oneprojector(b, d=1, tau=None):
+    """One projector.
+
+    Projects b onto the (weighted) one-norm ball of radius tau.
+    If d=1 solves the problem:
+
+    minimize_x  ||b-x||_2  st  ||x||_1 <= tau.
+
+    else:
+
+    minimize_x  ||b-x||_2  st  || Dx ||_1 <= tau.
+
+    Parameters
+    ----------
+    b : ndarray
+        Input vector to be projected.
+    d : {ndarray, float}
+        Weight vector (or scalar)
+    tau : float
+        Radius of one-norm ball.
+
+    Returns
+    -------
+    x : array_like
+        Projected vector
+
+    """
+    if not np.isscalar(d) and np.size(b) != np.size(d):
+        raise ValueError('vectors b and d must have the same length')
+
+    if np.isscalar(d) and d == 0:
+        return b.copy()
+
+    s = np.sign(b)
+    b = np.abs(b)
+
+    if np.isscalar(d):
+        x = _oneprojector_di(b, tau/d)
+    else:
+        d = np.abs(d)
+        idx = np.where(d > np.spacing(1))
+        x = b.copy()
+        x[idx] = _oneprojector_di(b[idx], d[idx], tau)
+    x *= s
+    return x
+
+def _spg_line_curvy(x, g, fMax, A, b, spglproject, weights, tau):
+    """Projected backtracking linesearch.
+
+    On entry, g is the (possibly scaled) steepest descent direction.
+    """
+    gamma = 1e-4
+    maxIts = 10
+    step = 1.
+    sNorm = 0.
+    scale = 1.
+    nSafe = 0
+    iterr = 0
+    n = np.size(x)
+
+    while 1:
+        # Evaluate trial point and function value.
+        xNew = spglproject(x - step*scale*g, weights, tau)
+        rNew = b - A.matvec(xNew)
+        fNew = np.abs(np.conj(rNew).dot(rNew)) / 2.
+        s = xNew - x
+        gts = scale * np.real(np.dot(np.conj(g), s))
+
+        if gts >= 0:
+            err = EXIT_NODESCENT_spgline
+            break
+
+        if fNew < fMax + gamma*step*gts:
+            err = EXIT_CONVERGED_spgline
+            break
+        elif iterr >= maxIts:
+            err = EXIT_ITERATIONS_spgline
+            break
+
+        # New linesearch iteration.
+        iterr += 1
+        step /= 2.
+
+        # Safeguard: If stepMax is huge, then even damped search
+        # directions can give exactly the same point after projection.  If
+        # we observe this in adjacent iterations, we drastically damp the
+        # next search direction.
+        sNormOld = np.copy(sNorm)
+        sNorm = np.linalg.norm(s) / np.sqrt(n)
+        if abs(sNorm - sNormOld) <= 1e-6 * sNorm:
+            gNorm = np.linalg.norm(g) / np.sqrt(n)
+            scale = sNorm / gNorm / (2.**nSafe)
+            nSafe += 1.
+    return fNew, xNew, rNew, iterr, step, err
+
+def _spg_line(f, x ,d, gtd, fMax, A, b):
+    """Nonmonotone linesearch.
+    """
+    maxIts = 10
+    step = 1.
+    iterr = 0
+    gamma = 1e-4
+    gtd = -abs(gtd)
+    while 1:
+        # Evaluate trial point and function value.
+        xNew = x + step*d
+        rNew = b - A.matvec(xNew)
+        fNew = abs(np.conj(rNew).dot(rNew)) / 2.
+
+        # Check exit conditions.
+        if fNew < fMax + gamma*step*gtd: # Sufficient descent condition.
+            err = EXIT_CONVERGED_spgline
+            break
+        elif  iterr >= maxIts: # Too many linesearch iterations.
+            err = EXIT_ITERATIONS_spgline
+            break
+
+        # % New linesearch iterration.
+        iterr += 1
+
+        # Safeguarded quadratic interpolation.
+        if step <= 0.1:
+            step /= 2.
+        else:
+            tmp = (-gtd*step**2.) / (2*(fNew-f-step*gtd))
+            if tmp < 0.1 or tmp > 0.9*step or np.isnan(tmp):
+                tmp = step / 2.
+            step = tmp
+    return fNew, xNew, rNew, iterr, err
+
+def _active_vars(x, g, nnz_idx, opttol,
+               weights, dual_norm):
+    """Find the current active set.
+
+    Returns
+    -------
+    nnz_x : int
+        Number of nonzero elements in x.
+    nnz_g : int
+        Number of elements in nnz_idx.
+    nnz_idx : array_like
+        Vector of primal/dual indicators.
+    nnz_diff : int
+        Number of elements that changed in the support.
+
+    """
+    xtol = min([.1, 10.*opttol])
+    gtol = min([.1, 10.*opttol])
+    gnorm = dual_norm(g, weights)
+    nnz_old = nnz_idx
+
+    # Reduced costs for positive and negative parts of x.
+    z1 = gnorm + g
+    z2 = gnorm - g
+
+    # Primal/dual based indicators.
+    xpos = (x > xtol) & (z1 < gtol)
+    xneg = (x < -xtol) & (z2 < gtol)
+    nnz_idx = xpos | xneg
+
+    # Count is based on simple primal indicator.
+    nnz_x = np.sum(np.abs(x) >= xtol)
+    nnz_g = np.sum(nnz_idx)
+
+    if nnz_old is None:
+        nnz_diff = np.inf
+    else:
+        nnz_diff = np.sum(nnz_idx != nnz_old)
+
+    return nnz_x, nnz_g, nnz_idx, nnz_diff
+
 
 def spgl1(A, b, tau=0, sigma=0, x0=None,
           fid=None, verbosity=0, iterations=None, nPrevVals=3, bpTol=1e-6,
           lsTol=1e-6, optTol=1e-4, decTol=1e-4, stepMin=1e-16, stepMax=1e5,
           activeSetIt=np.inf, subspaceMin=False,
           iscomplex=False, maxMatvec=np.inf, weights=None,
-          project=NormL1_project, primal_norm=NormL1_primal,
-          dual_norm=NormL1_dual):
+          project=_norm_l1_project, primal_norm=_norm_l1_primal,
+          dual_norm=_norm_l1_dual):
     r"""SPGL1 solver.
 
     Solve basis pursuit (BP), basis pursuit denoise (BPDN), or LASSO problems
@@ -294,8 +635,9 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
             else:
                 logB = '%5i  %13.7e  %13.7e  %9.2e  %9.3e  %6.1f  %6i  %6i %6s'
                 logH = '%5s  %13s  %13s  %9s  %9s  %6s  %6s  %6s  %6s\n'
-                _printf(fid, logH %('iterr','Objective','Relative Gap','Rel Error',
-                        'gNorm','stepG','nnzX','nnzG','tau'))
+                _printf(fid, logH %('iterr', 'Objective', 'Relative Gap',
+                                    'Rel Error', 'gNorm', 'stepG', 'nnzX',
+                                    'nnzG', 'tau'))
 
     # Project the starting point and evaluate function and gradient.
     x = project(x, weights, tau)
@@ -335,8 +677,8 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
 
         #% Count number of consecutive iterations with identical support.
         nnzOld = nnzIdx
-        nnzX, nnzG, nnzIdx, nnzDiff = activeVars(x, g, nnzIdx, optTol,
-                                                 weights, dual_norm)
+        nnzX, nnzG, nnzIdx, nnzDiff = _active_vars(x, g, nnzIdx, optTol,
+                                                   weights, dual_norm)
         if nnzDiff:
             nnziterr = 0
         else:
@@ -445,7 +787,8 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
         while 1:
             # Projected gradient step and linesearch.
             f,x,r,nLine,stepG,lnErr = \
-               spgLineCurvy(x,gStep*g,max(lastFv),A,b,project,weights,tau)
+               _spg_line_curvy(x, gStep*g, max(lastFv), A, b,
+                               project, weights, tau)
             nProdA += nLine
             nLineTot = nLineTot + nLine
             if nProdA + nProdAt > maxMatvec:
@@ -458,8 +801,8 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
                 x = xOld.copy()
                 f = fOld
                 dx = project(x - gStep*g, weights, tau) - x
-                gtd = np.dot(np.conj(g),dx)
-                f,x,r,nLine,lnErr = spgLine(f,x,dx,gtd,max(lastFv),A,b)
+                gtd = np.dot(np.conj(g), dx)
+                f,x,r,nLine,lnErr = _spg_line(f, x, dx, gtd, max(lastFv), A, b)
                 nProdA += nLine
                 nLineTot = nLineTot + nLine
                 if nProdA + nProdAt > maxMatvec:
@@ -480,12 +823,11 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
                         maxLineErrors -= 1
 
             # Subspace minimization (only if active-set change is small).
-            doSubspaceMin = False
             if subspaceMin:
                 g = - A.rmatvec(r)
                 nProdAt += 1
-                nnzX,nnzG, nnzIdx, nnzDiff = activeVars(x, g, nnzOld, optTol,
-                                                        weights, dual_norm)
+                nnzX,nnzG, nnzIdx, nnzDiff = _active_vars(x, g, nnzOld, optTol,
+                                                          weights, dual_norm)
                 if not nnzDiff:
                     if nnzX == nnzG:
                         itnMaxLSQR = 20
@@ -542,8 +884,8 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
                         subspace = True
                         nProdA += 1
 
-            if primal_norm(x, weights) > tau+optTol:
-                raise ValueError('Primal norm out of bound')
+                if primal_norm(x, weights) > tau + optTol:
+                    raise ValueError('Primal norm out of bound')
 
             #---------------------------------------------------------------
             # Update gradient and compute new Barzilai-Borwein scaling.
@@ -774,22 +1116,19 @@ def spg_mmv(A, B, sigma=0, **kwargs):
     A = aslinearoperator(A)
     m, n = A.shape
     groups = B.shape[1]
-    A_fh = _blockdiag(A, m, n, groups)
+    A = _blockdiag(A, m, n, groups)
 
     # Set projection specific functions
-    project = lambda x, weight, tau: NormL12_project(groups, x, weight, tau)
-    primal_norm = lambda x, weight: NormL12_primal(groups, x, weight)
-    dual_norm = lambda x, weight: NormL12_dual(groups, x, weight)
+    project = lambda x, weight, tau: _norm_l12_project(groups, x, weight, tau)
+    primal_norm = lambda x, weight: _norm_l12_primal(groups, x, weight)
+    dual_norm = lambda x, weight: _norm_l12_dual(groups, x, weight)
 
     tau = 0
     x0  = None
-    x, r, g, info = spgl1(A_fh, B.ravel(), tau, sigma, x0, project=project,
+    x, r, g, info = spgl1(A, B.ravel(), tau, sigma, x0, project=project,
                           primal_norm=primal_norm, dual_norm=dual_norm,
                           **kwargs)
-
-    #n = np.round(x.shape[0] / groups)
-    #m = B.shape[0]
-    x = reshape_rowwise(x, n, groups)
-    g = reshape_rowwise(g, n, groups)
+    x = x.reshape(n, groups)
+    g = g.reshape(n, groups)
 
     return x, r, g, info
