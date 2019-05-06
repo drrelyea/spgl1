@@ -101,11 +101,11 @@ def _norm_l1_project(x, weights, tau):
     """Projection onto the one-norm ball
     """
     if np.all(np.isreal(x)):
-        xproj = _oneprojector(x, weights, tau)
+        xproj = oneprojector(x, weights, tau)
     else:
         xa = np.abs(x)
         idx = xa < _eps
-        xc = _oneprojector(xa, weights, tau)
+        xc = oneprojector(xa, weights, tau)
         xc /= xa
         xc[idx] = 0
         xproj = x * xc
@@ -147,7 +147,7 @@ def _norm_l12_project(g, x, weights, tau):
         xa  = np.sqrt(np.sum(abs(x)**2, axis=1))
 
     idx = xa < np.spacing(1)
-    xc  = _oneprojector(xa, weights, tau)
+    xc  = oneprojector(xa, weights, tau)
     xc  = xc / xa
     xc[idx] = 0
     x = spdiags(xc, 0, m, m)*x
@@ -173,14 +173,14 @@ def _norm_l1nn_project(x, weights, tau):
     xx[xx < 0] = 0
     return _norm_l1_project(xx,weights,tau)
 
-def _oneprojector_i(b,tau):
-    n     = np.size(b)
-    x     = np.zeros(n)
-    bNorm = np.linalg.norm(b,1)
+def _oneprojector_i(b, tau):
+    n = b.size
+    x = np.zeros(n)
+    bNorm = np.linalg.norm(b, 1)
 
-    if (tau >= bNorm):
+    if tau >= bNorm:
         return b.copy()
-    if (tau <  np.spacing(1)  ):
+    if tau <  np.spacing(1):
         return x.copy()
 
     idx = np.argsort(b)[::-1]
@@ -241,17 +241,17 @@ def _oneprojector_di(b, d, tau=None):
     else:
         return _oneprojector_d(b, d, tau)
 
-def _oneprojector(b, d=1, tau=None):
+def oneprojector(b, d=1, tau=None):
     """One projector.
 
     Projects b onto the (weighted) one-norm ball of radius tau.
-    If d=1 solves the problem:
+    If d=1 solves the problem::
 
-    minimize_x  ||b-x||_2  st  ||x||_1 <= tau.
+        minimize_x  ||b-x||_2  st  ||x||_1 <= tau.
 
-    else:
+    else::
 
-    minimize_x  ||b-x||_2  st  || Dx ||_1 <= tau.
+        minimize_x  ||b-x||_2  st  || Dx ||_1 <= tau.
 
     Parameters
     ----------
@@ -358,7 +358,7 @@ def _spg_line(f, x ,d, gtd, fMax, A, b):
             err = EXIT_ITERATIONS_spgline
             break
 
-        # % New linesearch iterration.
+        # New line-search iteration.
         iterr += 1
 
         # Safeguarded quadratic interpolation.
@@ -423,15 +423,15 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
     r"""SPGL1 solver.
 
     Solve basis pursuit (BP), basis pursuit denoise (BPDN), or LASSO problems
-    [1]_ [2]_ depending on the choice of ``tau`` and ``sigma``:
+    [1]_ [2]_ depending on the choice of ``tau`` and ``sigma``::
 
-    (BPDN)   ``minimize  ||x||_1  subj. to  Ax = b`
+        (BP)     minimize  ||x||_1  subj. to  Ax = b
 
-    (BPDN)   ``minimize  ||x||_1  subj. to  ||Ax-b||_2 <= sigma``
+        (BPDN)   minimize  ||x||_1  subj. to  ||Ax-b||_2 <= sigma
 
-    (LASSO)  ``minimize  ||Ax-b||_2  subj, to  ||x||_1 <= tau``
+        (LASSO)  minimize  ||Ax-b||_2  subj, to  ||x||_1 <= tau
 
-    The matrix A may be square or rectangular (over-determined or
+    The matrix ``A`` may be square or rectangular (over-determined or
     under-determined), and may have any rank.
 
     Parameters
@@ -469,7 +469,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
     stepMax : float, optional
         Maximum spectral step.
     activeSetIt : float, optional
-        Maximum number of iterations where no change is support is tolerated.
+        Maximum number of iterations where no change in support is tolerated.
         Exit with EXIT_ACTIVE_SET if no change is observed for ``activeSetIt``
         iterations
     subspaceMin : bool, optional
@@ -507,14 +507,14 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
         ``.gNorm``, Lagrange multiplier of (LASSO)
 
         ``.stat``,
-           1: found a BPDN solution,
-           2: found a BP solution; exit based on small gradient,
-           3: found a BP solution; exit based on small residual,
-           4: found a LASSO solution,
-           5: error: too many iterations,
-           6: error: linesearch failed,
-           7: error: found suboptimal BP solution,
-           8: error: too many matrix-vector products
+           ``1``: found a BPDN solution,
+           ``2``: found a BP solution; exit based on small gradient,
+           ``3``: found a BP solution; exit based on small residual,
+           ``4: found a LASSO solution,
+           ``5``: error: too many iterations,
+           ``6``: error: linesearch failed,
+           ``7``: error: found suboptimal BP solution,
+           ``8``: error: too many matrix-vector products
 
         ``.time``, total solution time (seconds)
 
@@ -990,123 +990,201 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
     return x,r,g,info
 
 
-
-
 def spg_bp(A, b, **kwargs):
-# %SPG_BP  Solve the basis pursuit (BP) problem
-# %
-# %   SPG_BP is designed to solve the basis pursuit problem
-# %
-# %   (BP)  minimize  ||X||_1  subject to  AX = B,
-# %
-# %   where A is an M-by-N matrix, B is an M-vector, and SIGMA is a
-# %   nonnegative scalar.  In all cases below, A can be an explicit M-by-N
-# %   matrix or matrix-like object for which the operations  A*x  and  A'*y
-# %   are defined (i.e., matrix-vector multiplication with A and its
-# %   adjoint.)
-# %
-# %   Also, A can be a function handle that points to a function with the
-# %   signature
-# %
-# %   v = A(w,mode)   which returns  v = A *w  if mode == 1;
-# %                                  v = A'*w  if mode == 2.
-# %
-# %   X = SPG_BP(A,B) solves the BP problem.
-# %
-# %   X = SPG_BP(A,B,OPTIONS) specifies options that are set using
-# %   SPGSETPARMS.
-# %
-# %   [X,R,G,INFO] = SPG_BP(A,B,OPTIONS) additionally returns the
-# %   residual R = B - A*X (which should be small), the objective gradient G
-# %   = A'*R, and an INFO structure.  (See SPGL1 for a description of this
-# %   last output argument.)
-# %
-# %   See also spgl1, spgSetParms, spg_bpdn, spg_lasso.
+    """Basis pursuit (BP) problem
 
-# %   Copyright 2008, Ewout van den Berg and Michael P. Friedlander
-# %   http://www.cs.ubc.ca/labs/scl/spgl1
-# %   $Id: spg_bp.m 1074 2008-08-19 05:24:28Z ewout78 $
+    ``spg_bp`` is designed to solve the basis pursuit problem::
+
+        (BP)  minimize  ||x||_1  subject to  Ax = b,
+
+    where ``A`` is an M-by-N matrix, ``b`` is an M-vector.
+    ``A`` can be an explicit M-by-N matrix or a
+    :class:`scipy.sparse.linalg.LinearOperator`.
+
+    This is equivalent to calling ``spgl1(A, b, tau=0, sigma=0)
+
+    Parameters
+    ----------
+    A : {sparse matrix, ndarray, LinearOperator}
+        Representation of an m-by-n matrix.  It is required that
+        the linear operator can produce ``Ax`` and ``A^T x``.
+    b : array_like, shape (m,)
+        Right-hand side vector ``b``.
+    kwargs : dict, optional
+        Additional input parameters (refer to :func:`spgl1.spgl1` for a list
+        of possible parameters)
+
+    Returns
+    -------
+    x : array_like, shape (n,)
+        Inverted model
+    r : array_like, shape (m,)
+        Final residual
+    g : array_like, shape (h,)
+        Final gradient
+    info : dict
+        Dictionary with the following information:
+
+        ``.tau``, final value of tau (see sigma above)
+
+        ``.rNorm``, two-norm of the optimal residual
+
+        ``.rGap``, relative duality gap (an optimality measure)
+
+        ``.gNorm``, Lagrange multiplier of (LASSO)
+
+        ``.stat``,
+           ``1``: found a BPDN solution,
+           ``2``: found a BP solution; exit based on small gradient,
+           ``3``: found a BP solution; exit based on small residual,
+           ``4: found a LASSO solution,
+           ``5``: error: too many iterations,
+           ``6``: error: linesearch failed,
+           ``7``: error: found suboptimal BP solution,
+           ``8``: error: too many matrix-vector products
+
+        ``.time``, total solution time (seconds)
+
+        ``.nProdA``, number of multiplications with ``A``
+
+        ``.nProdAt``, number of multiplications with ``A'``
+
+    """
     sigma = 0
     tau = 0
-    x0  = None
-    x,r,g,info = spgl1(A,b,tau,sigma,x0,**kwargs)
+    x0 = None
+    x, r, g, info = spgl1(A, b, tau, sigma, x0, **kwargs)
 
     return x,r,g,info
 
 
 def spg_bpdn(A, b, sigma, **kwargs):
-# %SPG_BPDN  Solve the basis pursuit denoise (BPDN) problem
-# %
-# %   SPG_BPDN is designed to solve the basis pursuit denoise problem
-# %
-# %   (BPDN)  minimize  ||X||_1  subject to  ||A X - B|| <= SIGMA,
-# %
-# %   where A is an M-by-N matrix, B is an M-vector, and SIGMA is a
-# %   nonnegative scalar.  In all cases below, A can be an explicit M-by-N
-# %   matrix or matrix-like object for which the operations  A*x  and  A'*y
-# %   are defined (i.e., matrix-vector multiplication with A and its
-# %   adjoint.)
-# %
-# %   Also, A can be a function handle that points to a function with the
-# %   signature
-# %
-# %   v = A(w,mode)   which returns  v = A *w  if mode == 1;
-# %                                  v = A'*w  if mode == 2.
-# %
-# %   X = SPG_BPDN(A,B,SIGMA) solves the BPDN problem.  If SIGMA=0 or
-# %   SIGMA=[], then the basis pursuit (BP) problem is solved; i.e., the
-# %   constraints in the BPDN problem are taken as AX=B.
-# %
-# %   X = SPG_BPDN(A,B,SIGMA,OPTIONS) specifies options that are set using
-# %   SPGSETPARMS.
-# %
-# %   [X,R,G,INFO] = SPG_BPDN(A,B,SIGMA,OPTIONS) additionally returns the
-# %   residual R = B - A*X, the objective gradient G = A'*R, and an INFO
-# %   structure.  (See SPGL1 for a description of this last output argument.)
-# %
-# %   See also spgl1, spgSetParms, spg_bp, spg_lasso.
+    """Basis pursuit denoise (BPDN) problem.
 
-# %   Copyright 2008, Ewout van den Berg and Michael P. Friedlander
-# %   http://www.cs.ubc.ca/labs/scl/spgl1
-# %   $Id: spg_bpdn.m 1389 2009-05-29 18:32:33Z mpf $
+
+    ``spg_bpdn`` is designed to solve the basis pursuit denoise problem::
+
+        (BPDN)  minimize  ||x||_1  subject to  ||A x - b|| <= sigma
+
+    where ``A`` is an M-by-N matrix, ``b`` is an M-vector.
+    ``A`` can be an explicit M-by-N matrix or a
+    :class:`scipy.sparse.linalg.LinearOperator`.
+
+    This is equivalent to calling ``spgl1(A, b, tau=0, sigma=sigma)
+
+    Parameters
+    ----------
+    A : {sparse matrix, ndarray, LinearOperator}
+        Representation of an m-by-n matrix.  It is required that
+        the linear operator can produce ``Ax`` and ``A^T x``.
+    b : array_like, shape (m,)
+        Right-hand side vector ``b``.
+    kwargs : dict, optional
+        Additional input parameters (refer to :func:`spgl1.spgl1` for a list
+        of possible parameters)
+
+    Returns
+    -------
+    x : array_like, shape (n,)
+        Inverted model
+    r : array_like, shape (m,)
+        Final residual
+    g : array_like, shape (h,)
+        Final gradient
+    info : dict
+        Dictionary with the following information:
+
+        ``.tau``, final value of tau (see sigma above)
+
+        ``.rNorm``, two-norm of the optimal residual
+
+        ``.rGap``, relative duality gap (an optimality measure)
+
+        ``.gNorm``, Lagrange multiplier of (LASSO)
+
+        ``.stat``,
+           ``1``: found a BPDN solution,
+           ``2``: found a BP solution; exit based on small gradient,
+           ``3``: found a BP solution; exit based on small residual,
+           ``4: found a LASSO solution,
+           ``5``: error: too many iterations,
+           ``6``: error: linesearch failed,
+           ``7``: error: found suboptimal BP solution,
+           ``8``: error: too many matrix-vector products
+
+        ``.time``, total solution time (seconds)
+
+        ``.nProdA``, number of multiplications with A
+
+        ``.nProdAt``, number of multiplications with A'
+
+    """
     tau = 0
     x0  = None
     return spgl1(A,b,tau,sigma,x0, **kwargs)
 
 
 def spg_lasso(A, b, tau, **kwargs):
-    # %SPG_LASSO  Solve the LASSO problem
-    # %
-    # %   SPG_LASSO is designed to solve the LASSO problem
-    # %
-    # %   (LASSO)  minimize  ||AX - B||_2  subject to  ||X||_1 <= tau,
-    # %
-    # %   where A is an M-by-N matrix, B is an M-vector, and TAU is a
-    # %   nonnegative scalar.  In all cases below, A can be an explicit M-by-N
-    # %   matrix or matrix-like object for which the operations  A*x  and  A'*y
-    # %   are defined (i.e., matrix-vector multiplication with A and its
-    # %   adjoint.)
-    # %
-    # %   Also, A can be a function handle that points to a function with the
-    # %   signature
-    # %
-    # %   v = A(w,mode)   which returns  v = A *w  if mode == 1;
-    # %                                  v = A'*w  if mode == 2.
-    # %
-    # %   X = SPG_LASSO(A,B,TAU) solves the LASSO problem.
-    # %
-    # %   X = SPG_LASSO(A,B,TAU,OPTIONS) specifies options that are set using
-    # %   SPGSETPARMS.
-    # %
-    # %   [X,R,G,INFO] = SPG_LASSO(A,B,TAU,OPTIONS) additionally returns the
-    # %   residual R = B - A*X, the objective gradient G = A'*R, and an INFO
-    # %   structure.  (See SPGL1 for a description of this last output argument.)
-    # %
-    # %   See also spgl1, spgSetParms, spg_bp, spg_bpdn.
+    """LASSO problem
 
-    # %   Copyright 2008, Ewout van den Berg and Michael P. Friedlander
-    # %   http://www.cs.ubc.ca/labs/scl/spgl1
-    # %   $Id: spg_lasso.m 1074 2008-08-19 05:24:28Z ewout78 $
+
+    ``spg_lasso`` is designed to solve the Lasso problem::
+
+        (LASSO)  minimize  ||Ax - b||_2  subject to  ||x||_1 <= tau
+
+    where ``A`` is an M-by-N matrix, ``b`` is an M-vector.
+    ``A`` can be an explicit M-by-N matrix or a
+    :class:`scipy.sparse.linalg.LinearOperator`.
+
+    This is equivalent to calling ``spgl1(A, b, tau=tau, sigma=0)
+
+    Parameters
+    ----------
+    A : {sparse matrix, ndarray, LinearOperator}
+        Representation of an m-by-n matrix.  It is required that
+        the linear operator can produce ``Ax`` and ``A^T x``.
+    b : array_like, shape (m,)
+        Right-hand side vector ``b``.
+    kwargs : dict, optional
+        Additional input parameters (refer to :func:`spgl1.spgl1` for a list
+        of possible parameters)
+
+    Returns
+    -------
+    x : array_like, shape (n,)
+        Inverted model
+    r : array_like, shape (m,)
+        Final residual
+    g : array_like, shape (h,)
+        Final gradient
+    info : dict
+        Dictionary with the following information:
+
+        ``.tau``, final value of tau (see sigma above)
+
+        ``.rNorm``, two-norm of the optimal residual
+
+        ``.rGap``, relative duality gap (an optimality measure)
+
+        ``.gNorm``, Lagrange multiplier of (LASSO)
+
+        ``.stat``,
+           ``1``: found a BPDN solution,
+           ``2``: found a BP solution; exit based on small gradient,
+           ``3``: found a BP solution; exit based on small residual,
+           ``4: found a LASSO solution,
+           ``5``: error: too many iterations,
+           ``6``: error: linesearch failed,
+           ``7``: error: found suboptimal BP solution,
+           ``8``: error: too many matrix-vector products
+
+        ``.time``, total solution time (seconds)
+
+        ``.nProdA``, number of multiplications with A
+
+        ``.nProdAt``, number of multiplications with A'
+
+    """
     sigma = 0
     x0  = None
     return spgl1(A,b,tau,sigma,x0, **kwargs)

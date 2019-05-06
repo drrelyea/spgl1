@@ -4,7 +4,7 @@
 Original home page: http://www.cs.ubc.ca/labs/scl/spgl1/
 
 ## Introduction
-SPGL1 is a python (or Matlab) solver for large-scale one-norm
+SPGL1 is a solver for large-scale one-norm
 regularized least squares.
 
 It is designed to solve any of the following three problems:
@@ -24,17 +24,23 @@ that returns both both ``Ax`` and ``A'y``.
 SPGL1 can solve these three problems in both the real and complex domains.
 
 ## Installation
-Inside the main folder, type:
+To install ``spgl1`` within your current environment, type:
 ```
-pip install .
+make install
 ```
 or as a developer:
 ```
-pip install -e .
+make dev-install
 ```
 
-Note that an environment for developers can be created using the
-`requirements-dev.txt` or `environment-dev.yml` files.
+To install ``spgl1`` in a new conda environment, type:
+```
+make install_conda
+```
+or as a developer:
+```
+make dev-install_conda
+```
 
 
 ## Getting started
@@ -53,8 +59,3 @@ The algorithm implemented by SPGL1 is described in these two papers
 - E. van den Berg and M. P. Friedlander, "Sparse optimization with
   least-squares constraints", Tech. Rep. TR-2010-02, Dept of Computer
   Science, Univ of British Columbia, January 2010
-
-# Credits
-
-- David Relyea - drrelyea@gmail.com
-- Matteo Ravasi - mrava87

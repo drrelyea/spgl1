@@ -1,0 +1,1438 @@
+
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+    
+        <title>spgl1 &mdash; SPGL1</title>
+    
+
+
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  
+  
+    <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  
+
+  
+    <link rel="stylesheet" href="../_static/gallery.css" type="text/css" />
+  
+    <link rel="stylesheet" href="../_static/style.css" type="text/css" />
+  
+
+  
+        <link rel="index" title="Index"
+              href="../genindex.html"/>
+        <link rel="search" title="Search" href="../search.html"/>
+    <link rel="top" title="SPGL1" href="../index.html"/>
+        <link rel="up" title="Module code" href="index.html"/>
+    
+    <script src="../_static/require.js"></script>
+
+
+  
+  <script src="../_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> SPGL1
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                dev
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+    
+            
+            
+                <ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">Reference documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/index.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../credits.html">Credits</a></li>
+</ul>
+
+            
+          
+
+    
+        <p class="caption">
+            <span class="caption-text">
+            
+                Repository
+            
+            </span>
+        </p>
+        <ul>
+            
+                <li class="toctree-l1"><a href="https://github.com/drrelyea/SPGL1_python_port"><i class="fa fa-github fa-fw"></i> Source Code</a></li>
+            
+        </ul>
+    
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="../index.html">SPGL1</a>
+      </nav>
+
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../index.html">Docs</a> &raquo;</li>
+      
+          <li><a href="index.html">Module code</a> &raquo;</li>
+      
+    <li>spgl1</li>
+      <li class="wy-breadcrumbs-aside">
+        
+          
+        
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for spgl1</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span><span class="p">,</span> <span class="n">absolute_import</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">scipy.sparse</span> <span class="k">import</span> <span class="n">spdiags</span>
+<span class="kn">from</span> <span class="nn">scipy.sparse.linalg</span> <span class="k">import</span> <span class="n">aslinearoperator</span><span class="p">,</span> <span class="n">LinearOperator</span><span class="p">,</span> <span class="n">lsqr</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="c1"># Size of info vector in case of infinite iterations</span>
+<span class="n">_allocSize</span> <span class="o">=</span> <span class="mi">10000</span>
+
+<span class="c1"># Machine epsilon</span>
+<span class="n">_eps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">spacing</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="c1"># Exit conditions (constants).</span>
+<span class="n">EXIT_ROOT_FOUND</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">EXIT_BPSOL_FOUND</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="n">EXIT_LEAST_SQUARES</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="n">EXIT_OPTIMAL</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="n">EXIT_ITERATIONS</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">EXIT_LINE_ERROR</span> <span class="o">=</span> <span class="mi">6</span>
+<span class="n">EXIT_SUBOPTIMAL_BP</span> <span class="o">=</span> <span class="mi">7</span>
+<span class="n">EXIT_MATVEC_LIMIT</span> <span class="o">=</span> <span class="mi">8</span>
+<span class="n">EXIT_ACTIVE_SET</span> <span class="o">=</span> <span class="mi">9</span>
+<span class="n">EXIT_CONVERGED_spgline</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">EXIT_ITERATIONS_spgline</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">EXIT_NODESCENT_spgline</span> <span class="o">=</span> <span class="mi">2</span>
+
+
+<span class="c1"># private classes</span>
+<span class="k">class</span> <span class="nc">_LSQRprod</span><span class="p">(</span><span class="n">LinearOperator</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">nnzIdx</span><span class="p">,</span> <span class="n">ebar</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">A</span> <span class="o">=</span> <span class="n">A</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nnzIdx</span> <span class="o">=</span> <span class="n">nnzIdx</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ebar</span> <span class="o">=</span> <span class="n">ebar</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nbar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">ebar</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">A</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">nbar</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">dtype</span>
+    <span class="k">def</span> <span class="nf">_matvec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+        <span class="n">y</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">nnzIdx</span><span class="p">]</span> <span class="o">=</span> \
+            <span class="n">x</span> <span class="o">-</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">nbar</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ebar</span><span class="p">),</span>
+                                                 <span class="n">x</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">ebar</span><span class="p">)</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">matvec</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">z</span>
+    <span class="k">def</span> <span class="nf">_rmatvec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">rmatvec</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">nnzIdx</span><span class="p">]</span> <span class="o">-</span> \
+            <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">nbar</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ebar</span><span class="p">),</span>
+                                             <span class="n">y</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">nnzIdx</span><span class="p">]),</span> <span class="bp">self</span><span class="o">.</span><span class="n">ebar</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">z</span>
+
+<span class="k">class</span> <span class="nc">_blockdiag</span><span class="p">(</span><span class="n">LinearOperator</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Block-diagonal operator.</span>
+
+<span class="sd">    This operator is created to work with the spg_mmv solver, which solves</span>
+<span class="sd">    a multi-measurement basis pursuit denoise problem. Model and data are</span>
+<span class="sd">    effectively matrices of size ``n x g`` and ``m x g`` respectively,</span>
+<span class="sd">    and the operator A is applied to each column of the vectors.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">g</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">m</span> <span class="o">=</span> <span class="n">m</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">g</span> <span class="o">=</span> <span class="n">g</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">A</span> <span class="o">=</span> <span class="n">A</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">AH</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">H</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">m</span><span class="o">*</span><span class="n">g</span><span class="p">,</span> <span class="n">n</span><span class="o">*</span><span class="n">g</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">dtype</span>
+    <span class="k">def</span> <span class="nf">_matvec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">g</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">matmat</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">y</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="k">def</span> <span class="nf">_rmatvec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">m</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">g</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">AH</span><span class="o">.</span><span class="n">matmat</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">y</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+
+<span class="c1"># private methods</span>
+<span class="k">def</span> <span class="nf">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Print a message in file (fid=file ID) or on screen (fid=None)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">fid</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">fid</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_norm_l1_primal</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;L1 norm with weighted input vector</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">x</span><span class="o">*</span><span class="n">weights</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_norm_l1_dual</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">weights</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;L_inf norm with weighted input vector (dual to L1 norm)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">x</span><span class="o">/</span><span class="n">weights</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_norm_l1_project</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Projection onto the one-norm ball</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isreal</span><span class="p">(</span><span class="n">x</span><span class="p">)):</span>
+        <span class="n">xproj</span> <span class="o">=</span> <span class="n">oneprojector</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xa</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">xa</span> <span class="o">&lt;</span> <span class="n">_eps</span>
+        <span class="n">xc</span> <span class="o">=</span> <span class="n">oneprojector</span><span class="p">(</span><span class="n">xa</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
+        <span class="n">xc</span> <span class="o">/=</span> <span class="n">xa</span>
+        <span class="n">xc</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">xproj</span> <span class="o">=</span> <span class="n">x</span> <span class="o">*</span> <span class="n">xc</span>
+    <span class="k">return</span> <span class="n">xproj</span>
+
+<span class="k">def</span> <span class="nf">_norm_l12_primal</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;L1 norm with weighted input vector with number of groups equal to g</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">size</span> <span class="o">//</span> <span class="n">g</span>
+    <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isreal</span><span class="p">(</span><span class="n">x</span><span class="p">)):</span>
+        <span class="n">nrm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">g</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">nrm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">g</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span>
+                                            <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">nrm</span>
+
+<span class="k">def</span> <span class="nf">_norm_l12_dual</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;L_inf norm with weighted input vector with number of groups equal to g</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">//</span> <span class="n">g</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">g</span>
+
+    <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isreal</span><span class="p">(</span><span class="n">x</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">m</span><span class="p">,</span><span class="n">n</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span>
+                                             <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span><span class="o">/</span><span class="n">weights</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">m</span><span class="p">,</span><span class="n">n</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span>
+                                             <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span><span class="o">/</span><span class="n">weights</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_norm_l12_project</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Projection with number of groups equal to g</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">size</span> <span class="o">//</span> <span class="n">g</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">g</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isreal</span><span class="p">(</span><span class="n">x</span><span class="p">)):</span>
+        <span class="n">xa</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xa</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">xa</span> <span class="o">&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">spacing</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">xc</span>  <span class="o">=</span> <span class="n">oneprojector</span><span class="p">(</span><span class="n">xa</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
+    <span class="n">xc</span>  <span class="o">=</span> <span class="n">xc</span> <span class="o">/</span> <span class="n">xa</span>
+    <span class="n">xc</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">spdiags</span><span class="p">(</span><span class="n">xc</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">m</span><span class="p">)</span><span class="o">*</span><span class="n">x</span>
+    <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">_norm_l1nn_primal</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
+    <span class="c1"># Non-negative L1 gauge function</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">x</span><span class="o">*</span><span class="n">weights</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">x</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+    <span class="k">return</span> <span class="n">p</span>
+
+<span class="k">def</span> <span class="nf">_norm_l1nn_dual</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">weights</span><span class="p">):</span>
+    <span class="c1"># Dual of non-negative L1 gauge function</span>
+    <span class="n">xx</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">xx</span><span class="p">[</span><span class="n">xx</span><span class="o">&lt;</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">xx</span><span class="o">/</span><span class="n">weights</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_norm_l1nn_project</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Projection onto the non-negative part of the one-norm ball</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">xx</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">xx</span><span class="p">[</span><span class="n">xx</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="n">_norm_l1_project</span><span class="p">(</span><span class="n">xx</span><span class="p">,</span><span class="n">weights</span><span class="p">,</span><span class="n">tau</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_oneprojector_i</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">tau</span><span class="p">):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">size</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">bNorm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">tau</span> <span class="o">&gt;=</span> <span class="n">bNorm</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">b</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">tau</span> <span class="o">&lt;</span>  <span class="n">np</span><span class="o">.</span><span class="n">spacing</span><span class="p">(</span><span class="mi">1</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">b</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">b</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+    <span class="n">alphaPrev</span> <span class="o">=</span> <span class="mf">0.</span>
+    <span class="n">csb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> <span class="o">-</span> <span class="n">tau</span>
+    <span class="n">alpha</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">alpha</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>     <span class="o">=</span> <span class="n">csb</span> <span class="o">/</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">)</span><span class="o">+</span><span class="mf">1.0</span><span class="p">)</span>
+
+    <span class="n">alphaindex</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">alpha</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">&gt;=</span> <span class="n">b</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">alphaindex</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="n">alphaPrev</span> <span class="o">=</span> <span class="n">alpha</span><span class="p">[</span><span class="n">alphaindex</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">alphaPrev</span> <span class="o">=</span> <span class="n">alpha</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="n">x</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">b</span> <span class="o">-</span> <span class="n">alphaPrev</span>
+    <span class="n">x</span><span class="p">[</span><span class="n">x</span><span class="o">&lt;</span><span class="mi">0</span><span class="p">]</span><span class="o">=</span><span class="mi">0</span>
+
+    <span class="k">return</span> <span class="n">x</span>
+
+<span class="k">def</span> <span class="nf">_oneprojector_d</span><span class="p">(</span><span class="n">b</span><span class="p">,</span><span class="n">d</span><span class="p">,</span><span class="n">tau</span><span class="p">):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">tau</span> <span class="o">&gt;=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">d</span><span class="o">*</span><span class="n">b</span><span class="p">,</span> <span class="mi">1</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">b</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">tau</span> <span class="o">&lt;</span>  <span class="n">np</span><span class="o">.</span><span class="n">spacing</span><span class="p">(</span><span class="mi">1</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">b</span> <span class="o">/</span> <span class="n">d</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">b</span>  <span class="o">=</span> <span class="n">b</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+    <span class="n">d</span>  <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+    <span class="n">csdb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">d</span><span class="o">*</span><span class="n">b</span><span class="p">)</span>
+    <span class="n">csd2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">d</span><span class="o">*</span><span class="n">d</span><span class="p">)</span>
+    <span class="n">alpha1</span> <span class="o">=</span> <span class="p">(</span><span class="n">csdb</span><span class="o">-</span><span class="n">tau</span><span class="p">)</span><span class="o">/</span><span class="n">csd2</span>
+    <span class="n">alpha2</span> <span class="o">=</span> <span class="n">b</span><span class="o">/</span><span class="n">d</span>
+    <span class="n">ggg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">alpha1</span><span class="o">&gt;=</span><span class="n">alpha2</span><span class="p">)</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">ggg</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span><span class="o">==</span><span class="mi">0</span><span class="p">):</span>
+        <span class="n">i</span><span class="o">=</span><span class="n">n</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">i</span><span class="o">=</span><span class="n">ggg</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">i</span><span class="o">&gt;</span><span class="mi">0</span><span class="p">):</span>
+        <span class="n">soft</span> <span class="o">=</span> <span class="n">alpha1</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">x</span><span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">d</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="n">soft</span><span class="p">);</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">soft</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">return</span> <span class="n">x</span>
+
+<span class="k">def</span> <span class="nf">_oneprojector_di</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="n">tau</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">tau</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">tau</span> <span class="o">=</span> <span class="n">d</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">_oneprojector_i</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">tau</span><span class="o">/</span><span class="nb">abs</span><span class="p">(</span><span class="n">d</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_oneprojector_d</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
+
+<div class="viewcode-block" id="oneprojector"><a class="viewcode-back" href="../api/generated/spgl1.oneprojector.html#spgl1.oneprojector">[docs]</a><span class="k">def</span> <span class="nf">oneprojector</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">d</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">tau</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;One projector.</span>
+
+<span class="sd">    Projects b onto the (weighted) one-norm ball of radius tau.</span>
+<span class="sd">    If d=1 solves the problem::</span>
+
+<span class="sd">        minimize_x  ||b-x||_2  st  ||x||_1 &lt;= tau.</span>
+
+<span class="sd">    else::</span>
+
+<span class="sd">        minimize_x  ||b-x||_2  st  || Dx ||_1 &lt;= tau.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    b : ndarray</span>
+<span class="sd">        Input vector to be projected.</span>
+<span class="sd">    d : {ndarray, float}</span>
+<span class="sd">        Weight vector (or scalar)</span>
+<span class="sd">    tau : float</span>
+<span class="sd">        Radius of one-norm ball.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    x : array_like</span>
+<span class="sd">        Projected vector</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;vectors b and d must have the same length&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="ow">and</span> <span class="n">d</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">b</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">_oneprojector_di</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">tau</span><span class="o">/</span><span class="n">d</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">d</span> <span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">spacing</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">x</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">_oneprojector_di</span><span class="p">(</span><span class="n">b</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">d</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">tau</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">*=</span> <span class="n">s</span>
+    <span class="k">return</span> <span class="n">x</span></div>
+
+<span class="k">def</span> <span class="nf">_spg_line_curvy</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">fMax</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">spglproject</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Projected backtracking linesearch.</span>
+
+<span class="sd">    On entry, g is the (possibly scaled) steepest descent direction.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">gamma</span> <span class="o">=</span> <span class="mf">1e-4</span>
+    <span class="n">maxIts</span> <span class="o">=</span> <span class="mi">10</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="mf">1.</span>
+    <span class="n">sNorm</span> <span class="o">=</span> <span class="mf">0.</span>
+    <span class="n">scale</span> <span class="o">=</span> <span class="mf">1.</span>
+    <span class="n">nSafe</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">iterr</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+    <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># Evaluate trial point and function value.</span>
+        <span class="n">xNew</span> <span class="o">=</span> <span class="n">spglproject</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">step</span><span class="o">*</span><span class="n">scale</span><span class="o">*</span><span class="n">g</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
+        <span class="n">rNew</span> <span class="o">=</span> <span class="n">b</span> <span class="o">-</span> <span class="n">A</span><span class="o">.</span><span class="n">matvec</span><span class="p">(</span><span class="n">xNew</span><span class="p">)</span>
+        <span class="n">fNew</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">rNew</span><span class="p">)</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">rNew</span><span class="p">))</span> <span class="o">/</span> <span class="mf">2.</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">xNew</span> <span class="o">-</span> <span class="n">x</span>
+        <span class="n">gts</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">g</span><span class="p">),</span> <span class="n">s</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">gts</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">err</span> <span class="o">=</span> <span class="n">EXIT_NODESCENT_spgline</span>
+            <span class="k">break</span>
+
+        <span class="k">if</span> <span class="n">fNew</span> <span class="o">&lt;</span> <span class="n">fMax</span> <span class="o">+</span> <span class="n">gamma</span><span class="o">*</span><span class="n">step</span><span class="o">*</span><span class="n">gts</span><span class="p">:</span>
+            <span class="n">err</span> <span class="o">=</span> <span class="n">EXIT_CONVERGED_spgline</span>
+            <span class="k">break</span>
+        <span class="k">elif</span> <span class="n">iterr</span> <span class="o">&gt;=</span> <span class="n">maxIts</span><span class="p">:</span>
+            <span class="n">err</span> <span class="o">=</span> <span class="n">EXIT_ITERATIONS_spgline</span>
+            <span class="k">break</span>
+
+        <span class="c1"># New linesearch iteration.</span>
+        <span class="n">iterr</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">step</span> <span class="o">/=</span> <span class="mf">2.</span>
+
+        <span class="c1"># Safeguard: If stepMax is huge, then even damped search</span>
+        <span class="c1"># directions can give exactly the same point after projection.  If</span>
+        <span class="c1"># we observe this in adjacent iterations, we drastically damp the</span>
+        <span class="c1"># next search direction.</span>
+        <span class="n">sNormOld</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">sNorm</span><span class="p">)</span>
+        <span class="n">sNorm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">sNorm</span> <span class="o">-</span> <span class="n">sNormOld</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mf">1e-6</span> <span class="o">*</span> <span class="n">sNorm</span><span class="p">:</span>
+            <span class="n">gNorm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">g</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="n">sNorm</span> <span class="o">/</span> <span class="n">gNorm</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.</span><span class="o">**</span><span class="n">nSafe</span><span class="p">)</span>
+            <span class="n">nSafe</span> <span class="o">+=</span> <span class="mf">1.</span>
+    <span class="k">return</span> <span class="n">fNew</span><span class="p">,</span> <span class="n">xNew</span><span class="p">,</span> <span class="n">rNew</span><span class="p">,</span> <span class="n">iterr</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">err</span>
+
+<span class="k">def</span> <span class="nf">_spg_line</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">x</span> <span class="p">,</span><span class="n">d</span><span class="p">,</span> <span class="n">gtd</span><span class="p">,</span> <span class="n">fMax</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Nonmonotone linesearch.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">maxIts</span> <span class="o">=</span> <span class="mi">10</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="mf">1.</span>
+    <span class="n">iterr</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">gamma</span> <span class="o">=</span> <span class="mf">1e-4</span>
+    <span class="n">gtd</span> <span class="o">=</span> <span class="o">-</span><span class="nb">abs</span><span class="p">(</span><span class="n">gtd</span><span class="p">)</span>
+    <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># Evaluate trial point and function value.</span>
+        <span class="n">xNew</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="n">step</span><span class="o">*</span><span class="n">d</span>
+        <span class="n">rNew</span> <span class="o">=</span> <span class="n">b</span> <span class="o">-</span> <span class="n">A</span><span class="o">.</span><span class="n">matvec</span><span class="p">(</span><span class="n">xNew</span><span class="p">)</span>
+        <span class="n">fNew</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">rNew</span><span class="p">)</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">rNew</span><span class="p">))</span> <span class="o">/</span> <span class="mf">2.</span>
+
+        <span class="c1"># Check exit conditions.</span>
+        <span class="k">if</span> <span class="n">fNew</span> <span class="o">&lt;</span> <span class="n">fMax</span> <span class="o">+</span> <span class="n">gamma</span><span class="o">*</span><span class="n">step</span><span class="o">*</span><span class="n">gtd</span><span class="p">:</span> <span class="c1"># Sufficient descent condition.</span>
+            <span class="n">err</span> <span class="o">=</span> <span class="n">EXIT_CONVERGED_spgline</span>
+            <span class="k">break</span>
+        <span class="k">elif</span>  <span class="n">iterr</span> <span class="o">&gt;=</span> <span class="n">maxIts</span><span class="p">:</span> <span class="c1"># Too many linesearch iterations.</span>
+            <span class="n">err</span> <span class="o">=</span> <span class="n">EXIT_ITERATIONS_spgline</span>
+            <span class="k">break</span>
+
+        <span class="c1"># New line-search iteration.</span>
+        <span class="n">iterr</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="c1"># Safeguarded quadratic interpolation.</span>
+        <span class="k">if</span> <span class="n">step</span> <span class="o">&lt;=</span> <span class="mf">0.1</span><span class="p">:</span>
+            <span class="n">step</span> <span class="o">/=</span> <span class="mf">2.</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">tmp</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">gtd</span><span class="o">*</span><span class="n">step</span><span class="o">**</span><span class="mf">2.</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="p">(</span><span class="n">fNew</span><span class="o">-</span><span class="n">f</span><span class="o">-</span><span class="n">step</span><span class="o">*</span><span class="n">gtd</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">tmp</span> <span class="o">&lt;</span> <span class="mf">0.1</span> <span class="ow">or</span> <span class="n">tmp</span> <span class="o">&gt;</span> <span class="mf">0.9</span><span class="o">*</span><span class="n">step</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">tmp</span><span class="p">):</span>
+                <span class="n">tmp</span> <span class="o">=</span> <span class="n">step</span> <span class="o">/</span> <span class="mf">2.</span>
+            <span class="n">step</span> <span class="o">=</span> <span class="n">tmp</span>
+    <span class="k">return</span> <span class="n">fNew</span><span class="p">,</span> <span class="n">xNew</span><span class="p">,</span> <span class="n">rNew</span><span class="p">,</span> <span class="n">iterr</span><span class="p">,</span> <span class="n">err</span>
+
+<span class="k">def</span> <span class="nf">_active_vars</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">nnz_idx</span><span class="p">,</span> <span class="n">opttol</span><span class="p">,</span>
+               <span class="n">weights</span><span class="p">,</span> <span class="n">dual_norm</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Find the current active set.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    nnz_x : int</span>
+<span class="sd">        Number of nonzero elements in x.</span>
+<span class="sd">    nnz_g : int</span>
+<span class="sd">        Number of elements in nnz_idx.</span>
+<span class="sd">    nnz_idx : array_like</span>
+<span class="sd">        Vector of primal/dual indicators.</span>
+<span class="sd">    nnz_diff : int</span>
+<span class="sd">        Number of elements that changed in the support.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">xtol</span> <span class="o">=</span> <span class="nb">min</span><span class="p">([</span><span class="o">.</span><span class="mi">1</span><span class="p">,</span> <span class="mf">10.</span><span class="o">*</span><span class="n">opttol</span><span class="p">])</span>
+    <span class="n">gtol</span> <span class="o">=</span> <span class="nb">min</span><span class="p">([</span><span class="o">.</span><span class="mi">1</span><span class="p">,</span> <span class="mf">10.</span><span class="o">*</span><span class="n">opttol</span><span class="p">])</span>
+    <span class="n">gnorm</span> <span class="o">=</span> <span class="n">dual_norm</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span>
+    <span class="n">nnz_old</span> <span class="o">=</span> <span class="n">nnz_idx</span>
+
+    <span class="c1"># Reduced costs for positive and negative parts of x.</span>
+    <span class="n">z1</span> <span class="o">=</span> <span class="n">gnorm</span> <span class="o">+</span> <span class="n">g</span>
+    <span class="n">z2</span> <span class="o">=</span> <span class="n">gnorm</span> <span class="o">-</span> <span class="n">g</span>
+
+    <span class="c1"># Primal/dual based indicators.</span>
+    <span class="n">xpos</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">&gt;</span> <span class="n">xtol</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">z1</span> <span class="o">&lt;</span> <span class="n">gtol</span><span class="p">)</span>
+    <span class="n">xneg</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">&lt;</span> <span class="o">-</span><span class="n">xtol</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">z2</span> <span class="o">&lt;</span> <span class="n">gtol</span><span class="p">)</span>
+    <span class="n">nnz_idx</span> <span class="o">=</span> <span class="n">xpos</span> <span class="o">|</span> <span class="n">xneg</span>
+
+    <span class="c1"># Count is based on simple primal indicator.</span>
+    <span class="n">nnz_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">xtol</span><span class="p">)</span>
+    <span class="n">nnz_g</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">nnz_idx</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">nnz_old</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">nnz_diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">nnz_diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">nnz_idx</span> <span class="o">!=</span> <span class="n">nnz_old</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">nnz_x</span><span class="p">,</span> <span class="n">nnz_g</span><span class="p">,</span> <span class="n">nnz_idx</span><span class="p">,</span> <span class="n">nnz_diff</span>
+
+
+<div class="viewcode-block" id="spgl1"><a class="viewcode-back" href="../api/generated/spgl1.spgl1.html#spgl1.spgl1">[docs]</a><span class="k">def</span> <span class="nf">spgl1</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">tau</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">x0</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+          <span class="n">fid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">verbosity</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">iterations</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nPrevVals</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">bpTol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span>
+          <span class="n">lsTol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span> <span class="n">optTol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span> <span class="n">decTol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span> <span class="n">stepMin</span><span class="o">=</span><span class="mf">1e-16</span><span class="p">,</span> <span class="n">stepMax</span><span class="o">=</span><span class="mf">1e5</span><span class="p">,</span>
+          <span class="n">activeSetIt</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">subspaceMin</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+          <span class="n">iscomplex</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">maxMatvec</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+          <span class="n">project</span><span class="o">=</span><span class="n">_norm_l1_project</span><span class="p">,</span> <span class="n">primal_norm</span><span class="o">=</span><span class="n">_norm_l1_primal</span><span class="p">,</span>
+          <span class="n">dual_norm</span><span class="o">=</span><span class="n">_norm_l1_dual</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;SPGL1 solver.</span>
+
+<span class="sd">    Solve basis pursuit (BP), basis pursuit denoise (BPDN), or LASSO problems</span>
+<span class="sd">    [1]_ [2]_ depending on the choice of ``tau`` and ``sigma``::</span>
+
+<span class="sd">        (BP)     minimize  ||x||_1  subj. to  Ax = b</span>
+
+<span class="sd">        (BPDN)   minimize  ||x||_1  subj. to  ||Ax-b||_2 &lt;= sigma</span>
+
+<span class="sd">        (LASSO)  minimize  ||Ax-b||_2  subj, to  ||x||_1 &lt;= tau</span>
+
+<span class="sd">    The matrix ``A`` may be square or rectangular (over-determined or</span>
+<span class="sd">    under-determined), and may have any rank.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    A : {sparse matrix, ndarray, LinearOperator}</span>
+<span class="sd">        Representation of an m-by-n matrix.  It is required that</span>
+<span class="sd">        the linear operator can produce ``Ax`` and ``A^T x``.</span>
+<span class="sd">    b : array_like, shape (m,)</span>
+<span class="sd">        Right-hand side vector ``b``.</span>
+<span class="sd">    tau : float, optional</span>
+<span class="sd">        LASSO threshold. If different from ``None``, spgl1 solves LASSO problem</span>
+<span class="sd">    sigma : float, optional</span>
+<span class="sd">        BPDN threshold. If different from ``None``, spgl1 solves BPDN problem</span>
+<span class="sd">    x0 : array_like, shape (n,), optional</span>
+<span class="sd">        Initial guess of x, if None zeros are used.</span>
+<span class="sd">    fid : file, optional</span>
+<span class="sd">        File ID to direct log output, if None print on screen.</span>
+<span class="sd">    verbosity : int, optional</span>
+<span class="sd">        0=quiet, 1=some output, 2=more output.</span>
+<span class="sd">    iterations : int, optional</span>
+<span class="sd">        Max. number of iterations (default if ``10*m``).</span>
+<span class="sd">    nPrevVals : int, optional</span>
+<span class="sd">         Line-search history lenght.</span>
+<span class="sd">    bpTol : float, optional</span>
+<span class="sd">        Tolerance for identifying a basis pursuit solution.</span>
+<span class="sd">    lsTol : float, optional</span>
+<span class="sd">         Tolerance for basis pursuit solution.</span>
+<span class="sd">    optTol : float, optional</span>
+<span class="sd">        Optimality tolerance (default is ``1e-4``).</span>
+<span class="sd">    decTol : float, optional</span>
+<span class="sd">        Required relative change in primal objective for Newton.</span>
+<span class="sd">        Larger ``decTol`` means more frequent Newton updates.</span>
+<span class="sd">    stepMin : float, optional</span>
+<span class="sd">        Minimum spectral step.</span>
+<span class="sd">    stepMax : float, optional</span>
+<span class="sd">        Maximum spectral step.</span>
+<span class="sd">    activeSetIt : float, optional</span>
+<span class="sd">        Maximum number of iterations where no change in support is tolerated.</span>
+<span class="sd">        Exit with EXIT_ACTIVE_SET if no change is observed for ``activeSetIt``</span>
+<span class="sd">        iterations</span>
+<span class="sd">    subspaceMin : bool, optional</span>
+<span class="sd">        Subspace minimization (``True``) or not (``False``)</span>
+<span class="sd">    iscomplex : bool, optional</span>
+<span class="sd">        Problem with complex variables (``True``) or not (``False``)</span>
+<span class="sd">    maxMatvec : int, optional</span>
+<span class="sd">        Maximum matrix-vector multiplies allowed</span>
+<span class="sd">    weights : {float, ndarray}, optional</span>
+<span class="sd">        Weights ``W`` in ``||Wx||_1``</span>
+<span class="sd">    project : func, optional</span>
+<span class="sd">        Projection function</span>
+<span class="sd">    primal_norm : func, optional</span>
+<span class="sd">        Primal norm evaluation fun</span>
+<span class="sd">    dual_norm : func, optional</span>
+<span class="sd">         Dual norm eval function</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    x : array_like, shape (n,)</span>
+<span class="sd">        Inverted model</span>
+<span class="sd">    r : array_like, shape (m,)</span>
+<span class="sd">        Final residual</span>
+<span class="sd">    g : array_like, shape (h,)</span>
+<span class="sd">        Final gradient</span>
+<span class="sd">    info : dict</span>
+<span class="sd">        Dictionary with the following information:</span>
+
+<span class="sd">        ``.tau``, final value of tau (see sigma above)</span>
+
+<span class="sd">        ``.rNorm``, two-norm of the optimal residual</span>
+
+<span class="sd">        ``.rGap``, relative duality gap (an optimality measure)</span>
+
+<span class="sd">        ``.gNorm``, Lagrange multiplier of (LASSO)</span>
+
+<span class="sd">        ``.stat``,</span>
+<span class="sd">           ``1``: found a BPDN solution,</span>
+<span class="sd">           ``2``: found a BP solution; exit based on small gradient,</span>
+<span class="sd">           ``3``: found a BP solution; exit based on small residual,</span>
+<span class="sd">           ``4: found a LASSO solution,</span>
+<span class="sd">           ``5``: error: too many iterations,</span>
+<span class="sd">           ``6``: error: linesearch failed,</span>
+<span class="sd">           ``7``: error: found suboptimal BP solution,</span>
+<span class="sd">           ``8``: error: too many matrix-vector products</span>
+
+<span class="sd">        ``.time``, total solution time (seconds)</span>
+
+<span class="sd">        ``.nProdA``, number of multiplications with A</span>
+
+<span class="sd">        ``.nProdAt``, number of multiplications with A&#39;</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [1] E. van den Berg and M. P. Friedlander, &quot;Probing the Pareto frontier</span>
+<span class="sd">             for basis pursuit solutions&quot;, SIAM J. on Scientific Computing,</span>
+<span class="sd">             31(2):890-912. (2008).</span>
+<span class="sd">    .. [2] E. van den Berg and M. P. Friedlander, &quot;Sparse optimization with</span>
+<span class="sd">             least-squares constraints&quot;, Tech. Rep. TR-2010-02, Dept of</span>
+<span class="sd">             Computer Science, Univ of British Columbia (2010).</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+    <span class="n">A</span> <span class="o">=</span> <span class="n">aslinearoperator</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
+    <span class="n">m</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="k">if</span> <span class="n">tau</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">singleTau</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">singleTau</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">if</span> <span class="n">iterations</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">iterations</span> <span class="o">=</span> <span class="mi">10</span><span class="o">*</span><span class="n">m</span>
+
+    <span class="n">maxLineErrors</span> <span class="o">=</span> <span class="mi">10</span>     <span class="c1">#% Maximum number of line-search failures.</span>
+    <span class="n">pivTol</span>        <span class="o">=</span> <span class="mf">1e-12</span>  <span class="c1">#% Threshold for significant Newton step.</span>
+
+    <span class="n">maxIts</span> <span class="o">=</span> <span class="n">iterations</span>
+    <span class="n">maxMatvec</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">maxMatvec</span><span class="p">)</span>
+
+    <span class="c1"># Initialize local variables.</span>
+    <span class="n">iterr</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">itnTotLSQR</span> <span class="o">=</span> <span class="mi">0</span> <span class="c1"># Total SPGL1 and LSQR iterations.</span>
+    <span class="n">nProdA</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">nProdAt</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">lastFv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span> <span class="c1"># Last m function values.</span>
+    <span class="n">nLineTot</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Total no. of linesearch steps.</span>
+    <span class="n">printTau</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">nNewton</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">bNorm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+    <span class="n">stat</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">timeProject</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">timeMatProd</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">nnziterr</span> <span class="o">=</span> <span class="mi">0</span> <span class="c1"># No. of its with fixed pattern.</span>
+    <span class="n">nnzIdx</span> <span class="o">=</span> <span class="kc">None</span> <span class="c1"># Active-set indicator.</span>
+    <span class="n">subspace</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># Flag if did subspace min in current itn.</span>
+    <span class="n">stepG</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Step length for projected gradient.</span>
+    <span class="n">testUpdateTau</span> <span class="o">=</span> <span class="mi">0</span> <span class="c1"># Previous step did not update tau</span>
+
+    <span class="c1"># Determine initial x and see if problem is complex</span>
+    <span class="n">realx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lib</span><span class="o">.</span><span class="n">isreal</span><span class="p">(</span><span class="n">A</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">lib</span><span class="o">.</span><span class="n">isreal</span><span class="p">(</span><span class="n">b</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">x0</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x0</span><span class="p">)</span>
+
+    <span class="c1">#% Override realx when iscomplex flag is set</span>
+    <span class="k">if</span> <span class="n">iscomplex</span><span class="p">:</span>
+        <span class="n">realx</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="c1"># Check if all weights (if any) are strictly positive. In previous</span>
+    <span class="c1"># versions we also checked if the number of weights was equal to</span>
+    <span class="c1"># n. In the case of multiple measurement vectors, this no longer</span>
+    <span class="c1"># needs to apply, so the check was removed.</span>
+    <span class="k">if</span> <span class="n">weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Entries in weights must be finite&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">weights</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Entries in weights must be strictly positive&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="mi">1</span>
+
+    <span class="c1"># Quick exit if sigma &gt;= ||b||.  Set tau = 0 to short-circuit the loop.</span>
+    <span class="k">if</span> <span class="n">bNorm</span> <span class="o">&lt;=</span> <span class="n">sigma</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;W: sigma &gt;= ||b||.  Exact solution is x = 0.&#39;</span><span class="p">)</span>
+        <span class="n">tau</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">singleTau</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="c1"># Do not do subspace minimization if x is complex.</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">realx</span> <span class="ow">and</span> <span class="n">subspaceMin</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;W: Subspace minimization disabled when variables are complex.&#39;</span><span class="p">)</span>
+        <span class="n">subspaceMin</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="c1">#% Pre-allocate iteration info vectors</span>
+    <span class="n">xNorm1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">maxIts</span><span class="p">,</span> <span class="n">_allocSize</span><span class="p">))</span>
+    <span class="n">rNorm2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">maxIts</span><span class="p">,</span> <span class="n">_allocSize</span><span class="p">))</span>
+    <span class="n">lambdaa</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">maxIts</span><span class="p">,</span> <span class="n">_allocSize</span><span class="p">))</span>
+
+    <span class="c1"># Log header.</span>
+    <span class="k">if</span> <span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;=&#39;</span><span class="o">*</span><span class="mi">80</span><span class="o">+</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;SPGL1&#39;</span> <span class="p">)</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;=&#39;</span><span class="o">*</span><span class="mi">80</span><span class="o">+</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-22s</span><span class="s1">: </span><span class="si">%8i</span><span class="s1"> </span><span class="si">%4s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;No. rows&#39;</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">))</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-22s</span><span class="s1">: </span><span class="si">%8i</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;No. columns&#39;</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-22s</span><span class="s1">: </span><span class="si">%8.2e</span><span class="s1"> </span><span class="si">%4s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;Initial tau&#39;</span><span class="p">,</span> <span class="n">tau</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">))</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-22s</span><span class="s1">: </span><span class="si">%8.2e</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;Two-norm of b&#39;</span><span class="p">,</span> <span class="n">bNorm</span><span class="p">))</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-22s</span><span class="s1">: </span><span class="si">%8.2e</span><span class="s1"> </span><span class="si">%4s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;Optimality tol&#39;</span><span class="p">,</span> <span class="n">optTol</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">singleTau</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-22s</span><span class="s1">: </span><span class="si">%8.2e</span><span class="se">\n</span><span class="s1">&#39;</span>  <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;Target one-norm of x&#39;</span><span class="p">,</span> <span class="n">tau</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-22s</span><span class="s1">: </span><span class="si">%8.2e</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;Target objective&#39;</span><span class="p">,</span> <span class="n">sigma</span><span class="p">))</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-22s</span><span class="s1">: </span><span class="si">%8.2e</span><span class="s1"> </span><span class="si">%4s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;Basis pursuit tol&#39;</span> <span class="p">,</span><span class="n">bpTol</span><span class="p">,</span><span class="s1">&#39;&#39;</span><span class="p">))</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-22s</span><span class="s1">: </span><span class="si">%8i</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;Maximum iterations&#39;</span><span class="p">,</span><span class="n">maxIts</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">verbosity</span> <span class="o">&gt;=</span><span class="mi">2</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">singleTau</span><span class="p">:</span>
+                <span class="n">logB</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">%5i</span><span class="s1">  </span><span class="si">%13.7e</span><span class="s1">  </span><span class="si">%13.7e</span><span class="s1">  </span><span class="si">%9.2e</span><span class="s1">  </span><span class="si">%6.1f</span><span class="s1">  </span><span class="si">%6i</span><span class="s1">  </span><span class="si">%6i</span><span class="s1"> </span><span class="si">%6s</span><span class="s1">&#39;</span>
+                <span class="n">logH</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">%5s</span><span class="s1">  </span><span class="si">%13s</span><span class="s1">  </span><span class="si">%13s</span><span class="s1">  </span><span class="si">%9s</span><span class="s1">  </span><span class="si">%6s</span><span class="s1">  </span><span class="si">%6s</span><span class="s1">  </span><span class="si">%6s</span><span class="se">\n</span><span class="s1">&#39;</span>
+                <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="n">logH</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;iterr&#39;</span><span class="p">,</span><span class="s1">&#39;Objective&#39;</span><span class="p">,</span><span class="s1">&#39;Relative Gap&#39;</span><span class="p">,</span>
+                        <span class="s1">&#39;gNorm&#39;</span><span class="p">,</span><span class="s1">&#39;stepG&#39;</span><span class="p">,</span><span class="s1">&#39;nnzX&#39;</span><span class="p">,</span><span class="s1">&#39;nnzG&#39;</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">logB</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">%5i</span><span class="s1">  </span><span class="si">%13.7e</span><span class="s1">  </span><span class="si">%13.7e</span><span class="s1">  </span><span class="si">%9.2e</span><span class="s1">  </span><span class="si">%9.3e</span><span class="s1">  </span><span class="si">%6.1f</span><span class="s1">  </span><span class="si">%6i</span><span class="s1">  </span><span class="si">%6i</span><span class="s1"> </span><span class="si">%6s</span><span class="s1">&#39;</span>
+                <span class="n">logH</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">%5s</span><span class="s1">  </span><span class="si">%13s</span><span class="s1">  </span><span class="si">%13s</span><span class="s1">  </span><span class="si">%9s</span><span class="s1">  </span><span class="si">%9s</span><span class="s1">  </span><span class="si">%6s</span><span class="s1">  </span><span class="si">%6s</span><span class="s1">  </span><span class="si">%6s</span><span class="s1">  </span><span class="si">%6s</span><span class="se">\n</span><span class="s1">&#39;</span>
+                <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="n">logH</span> <span class="o">%</span><span class="p">(</span><span class="s1">&#39;iterr&#39;</span><span class="p">,</span> <span class="s1">&#39;Objective&#39;</span><span class="p">,</span> <span class="s1">&#39;Relative Gap&#39;</span><span class="p">,</span>
+                                    <span class="s1">&#39;Rel Error&#39;</span><span class="p">,</span> <span class="s1">&#39;gNorm&#39;</span><span class="p">,</span> <span class="s1">&#39;stepG&#39;</span><span class="p">,</span> <span class="s1">&#39;nnzX&#39;</span><span class="p">,</span>
+                                    <span class="s1">&#39;nnzG&#39;</span><span class="p">,</span> <span class="s1">&#39;tau&#39;</span><span class="p">))</span>
+
+    <span class="c1"># Project the starting point and evaluate function and gradient.</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">project</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">b</span> <span class="o">-</span> <span class="n">A</span><span class="o">.</span><span class="n">matvec</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>  <span class="c1">#% r = b - Ax</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="o">-</span><span class="n">A</span><span class="o">.</span><span class="n">rmatvec</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>  <span class="c1">#% g = -A&#39;r</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">r</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="mf">2.</span>
+    <span class="n">nProdA</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="n">nProdAt</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="c1"># Required for nonmonotone strategy.</span>
+    <span class="n">lastFv</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">f</span>
+    <span class="n">fBest</span> <span class="o">=</span> <span class="n">f</span>
+    <span class="n">xBest</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">fOld</span> <span class="o">=</span> <span class="n">f</span>
+
+    <span class="c1"># Compute projected gradient direction and initial step length.</span>
+    <span class="n">dx</span> <span class="o">=</span> <span class="n">project</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">g</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span> <span class="o">-</span> <span class="n">x</span>
+    <span class="n">dxNorm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">dx</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">dxNorm</span> <span class="o">&lt;</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">stepMax</span><span class="p">):</span>
+        <span class="n">gStep</span> <span class="o">=</span> <span class="n">stepMax</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">gStep</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">stepMax</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">stepMin</span><span class="p">,</span> <span class="mf">1.</span><span class="o">/</span><span class="n">dxNorm</span><span class="p">))</span>
+
+    <span class="c1"># Main iteration loop.</span>
+    <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># Test exit conditions.</span>
+
+        <span class="c1"># Compute quantities needed for log and exit conditions.</span>
+        <span class="n">gNorm</span> <span class="o">=</span> <span class="n">dual_norm</span><span class="p">(</span><span class="o">-</span><span class="n">g</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span>
+        <span class="n">rNorm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="n">gap</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">r</span><span class="p">),</span> <span class="n">r</span><span class="o">-</span><span class="n">b</span><span class="p">)</span> <span class="o">+</span> <span class="n">tau</span><span class="o">*</span><span class="n">gNorm</span>
+        <span class="n">rGap</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">gap</span><span class="p">)</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="mf">1.</span><span class="p">,</span><span class="n">f</span><span class="p">)</span>
+        <span class="n">aError1</span> <span class="o">=</span> <span class="n">rNorm</span> <span class="o">-</span> <span class="n">sigma</span>
+        <span class="n">aError2</span> <span class="o">=</span> <span class="n">f</span> <span class="o">-</span> <span class="n">sigma</span><span class="o">**</span><span class="mf">2.</span> <span class="o">/</span> <span class="mf">2.</span>
+        <span class="n">rError1</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">aError1</span><span class="p">)</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="mf">1.</span><span class="p">,</span> <span class="n">rNorm</span><span class="p">)</span>
+        <span class="n">rError2</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">aError2</span><span class="p">)</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="mf">1.</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+
+        <span class="c1">#% Count number of consecutive iterations with identical support.</span>
+        <span class="n">nnzOld</span> <span class="o">=</span> <span class="n">nnzIdx</span>
+        <span class="n">nnzX</span><span class="p">,</span> <span class="n">nnzG</span><span class="p">,</span> <span class="n">nnzIdx</span><span class="p">,</span> <span class="n">nnzDiff</span> <span class="o">=</span> <span class="n">_active_vars</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">nnzIdx</span><span class="p">,</span> <span class="n">optTol</span><span class="p">,</span>
+                                                   <span class="n">weights</span><span class="p">,</span> <span class="n">dual_norm</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">nnzDiff</span><span class="p">:</span>
+            <span class="n">nnziterr</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">nnziterr</span> <span class="o">+=</span> <span class="n">nnziterr</span>
+            <span class="k">if</span> <span class="n">nnziterr</span><span class="o">+</span><span class="mi">1</span> <span class="o">&gt;=</span> <span class="n">activeSetIt</span><span class="p">:</span>
+                <span class="n">stat</span> <span class="o">=</span> <span class="n">EXIT_ACTIVE_SET</span>
+
+        <span class="c1"># Single tau: Check if were optimal.</span>
+        <span class="c1"># The 2nd condition is there to guard against large tau.</span>
+        <span class="k">if</span> <span class="n">singleTau</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">rGap</span> <span class="o">&lt;=</span> <span class="n">optTol</span> <span class="ow">or</span> <span class="n">rNorm</span> <span class="o">&lt;</span> <span class="n">optTol</span><span class="o">*</span><span class="n">bNorm</span><span class="p">:</span>
+                <span class="n">stat</span>  <span class="o">=</span> <span class="n">EXIT_OPTIMAL</span>
+        <span class="k">else</span><span class="p">:</span> <span class="c1"># Multiple tau: Check if found root and/or if tau needs updating.</span>
+            <span class="c1"># Test if a least-squares solution has been found</span>
+            <span class="k">if</span> <span class="n">gNorm</span> <span class="o">&lt;=</span> <span class="n">lsTol</span> <span class="o">*</span> <span class="n">rNorm</span><span class="p">:</span>
+                <span class="n">stat</span> <span class="o">=</span> <span class="n">EXIT_LEAST_SQUARES</span>
+
+            <span class="k">if</span> <span class="n">rGap</span> <span class="o">&lt;=</span> <span class="nb">max</span><span class="p">(</span><span class="n">optTol</span><span class="p">,</span> <span class="n">rError2</span><span class="p">)</span> <span class="ow">or</span> <span class="n">rError1</span> <span class="o">&lt;=</span> <span class="n">optTol</span><span class="p">:</span>
+                <span class="c1"># The problem is nearly optimal for the current tau.</span>
+                <span class="c1"># Check optimality of the current root.</span>
+                <span class="k">if</span> <span class="n">rNorm</span> <span class="o">&lt;=</span> <span class="n">sigma</span><span class="p">:</span>
+                    <span class="n">stat</span> <span class="o">=</span> <span class="n">EXIT_SUBOPTIMAL_BP</span> <span class="c1"># Found suboptimal BP sol.</span>
+                <span class="k">if</span> <span class="n">rError1</span> <span class="o">&lt;=</span>  <span class="n">optTol</span><span class="p">:</span>
+                    <span class="n">stat</span> <span class="o">=</span> <span class="n">EXIT_ROOT_FOUND</span> <span class="c1"># Found approx root.</span>
+                <span class="k">if</span> <span class="n">rNorm</span> <span class="o">&lt;=</span> <span class="n">bpTol</span> <span class="o">*</span> <span class="n">bNorm</span><span class="p">:</span>
+                    <span class="n">stat</span> <span class="o">=</span> <span class="n">EXIT_BPSOL_FOUND</span> <span class="c1"># Resid minimzd -&gt; BP sol.</span>
+            <span class="c1"># 30 Jun 09: Large tau could mean large rGap even near LS sol.</span>
+            <span class="c1">#            Move LS check out of this if statement.</span>
+            <span class="c1"># if test2, stat=EXIT_LEAST_SQUARES; end #% Gradient zero -&gt; BP sol.</span>
+            <span class="n">fchange</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">f</span> <span class="o">-</span> <span class="n">fOld</span><span class="p">)</span>
+            <span class="n">testRelChange1</span> <span class="o">=</span> <span class="n">fchange</span> <span class="o">&lt;=</span> <span class="n">decTol</span> <span class="o">*</span> <span class="n">f</span>
+            <span class="n">testRelChange2</span> <span class="o">=</span> <span class="n">fchange</span> <span class="o">&lt;=</span> <span class="mf">1e-1</span> <span class="o">*</span> <span class="n">f</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">rNorm</span> <span class="o">-</span> <span class="n">sigma</span><span class="p">))</span>
+            <span class="n">testUpdateTau</span>  <span class="o">=</span> <span class="p">((</span><span class="n">testRelChange1</span> <span class="ow">and</span> <span class="n">rNorm</span> <span class="o">&gt;</span>  <span class="mi">2</span> <span class="o">*</span> <span class="n">sigma</span><span class="p">)</span> <span class="ow">or</span> \
+                             <span class="p">(</span><span class="n">testRelChange2</span> <span class="ow">and</span> <span class="n">rNorm</span> <span class="o">&lt;=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">sigma</span><span class="p">))</span> <span class="ow">and</span> \
+                             <span class="ow">not</span> <span class="n">stat</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">testUpdateTau</span>
+
+            <span class="k">if</span> <span class="n">testUpdateTau</span><span class="p">:</span>
+                <span class="c1"># Update tau.</span>
+                <span class="n">tauOld</span> <span class="o">=</span> <span class="n">tau</span>
+                <span class="n">tau</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">tau</span> <span class="o">+</span> <span class="p">(</span><span class="n">rNorm</span> <span class="o">*</span> <span class="n">aError1</span><span class="p">)</span> <span class="o">/</span> <span class="n">gNorm</span><span class="p">)</span>
+                <span class="n">nNewton</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">printTau</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">tauOld</span> <span class="o">-</span> <span class="n">tau</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mf">1e-6</span> <span class="o">*</span> <span class="n">tau</span> <span class="c1"># For log only.</span>
+                <span class="k">if</span> <span class="n">tau</span> <span class="o">&lt;</span> <span class="n">tauOld</span><span class="p">:</span>
+                    <span class="c1"># The one-norm ball has decreased. Need to make sure that</span>
+                    <span class="c1"># the next iterate is feasible, which we do by projecting it.</span>
+                    <span class="n">x</span> <span class="o">=</span> <span class="n">project</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
+
+                    <span class="c1"># Update the residual, gradient, and function value</span>
+                    <span class="n">r</span> <span class="o">=</span> <span class="n">b</span> <span class="o">-</span> <span class="n">A</span><span class="o">.</span><span class="n">matvec</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                    <span class="n">g</span> <span class="o">=</span> <span class="o">-</span> <span class="n">A</span><span class="o">.</span><span class="n">rmatvec</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+                    <span class="n">f</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">/</span> <span class="mf">2.</span>
+                    <span class="n">nProdA</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">nProdAt</span> <span class="o">+=</span> <span class="mi">1</span>
+
+                    <span class="c1"># Reset the function value history.</span>
+                    <span class="n">lastFv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+                    <span class="n">lastFv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">f</span>
+
+        <span class="c1"># Too many iterations and not converged.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">stat</span> <span class="ow">and</span> <span class="n">iterr</span><span class="o">+</span><span class="mi">1</span> <span class="o">&gt;=</span> <span class="n">maxIts</span><span class="p">:</span>
+            <span class="n">stat</span> <span class="o">=</span> <span class="n">EXIT_ITERATIONS</span>
+
+        <span class="c1"># Print log, update history and act on exit conditions.</span>
+        <span class="k">if</span> <span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">and</span> \
+                <span class="p">(((</span><span class="n">iterr</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">maxIts</span> <span class="o">-</span> <span class="n">iterr</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">iterr</span> <span class="o">%</span> <span class="mi">10</span> <span class="o">==</span> <span class="mi">0</span><span class="p">))</span>
+                 <span class="ow">or</span> <span class="n">singleTau</span> <span class="ow">or</span> <span class="n">printTau</span> <span class="ow">or</span> <span class="n">stat</span><span class="p">):</span>
+            <span class="n">tauFlag</span> <span class="o">=</span> <span class="s1">&#39;              &#39;</span>
+            <span class="n">subFlag</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+            <span class="k">if</span> <span class="n">printTau</span><span class="p">:</span>
+                <span class="n">tauFlag</span> <span class="o">=</span> <span class="s1">&#39; </span><span class="si">%13.7e</span><span class="s1">&#39;</span> <span class="o">%</span><span class="n">tau</span>
+            <span class="k">if</span> <span class="n">subspace</span><span class="p">:</span>
+                <span class="n">subFlag</span> <span class="o">=</span> <span class="s1">&#39; S </span><span class="si">%2i</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">itnLSQR</span>
+            <span class="k">if</span> <span class="n">singleTau</span><span class="p">:</span>
+                <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="n">logB</span> <span class="o">%</span><span class="p">(</span><span class="n">iterr</span><span class="p">,</span> <span class="n">rNorm</span><span class="p">,</span> <span class="n">rGap</span><span class="p">,</span> <span class="n">gNorm</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">stepG</span><span class="p">),</span>
+                                    <span class="n">nnzX</span><span class="p">,</span> <span class="n">nnzG</span><span class="p">,</span> <span class="n">subFlag</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">subspace</span><span class="p">:</span>
+                    <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;  </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">subFlag</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="n">logB</span> <span class="o">%</span><span class="p">(</span><span class="n">iterr</span><span class="p">,</span> <span class="n">rNorm</span><span class="p">,</span> <span class="n">rGap</span><span class="p">,</span> <span class="n">rError1</span><span class="p">,</span> <span class="n">gNorm</span><span class="p">,</span>
+                                    <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">stepG</span><span class="p">),</span> <span class="n">nnzX</span><span class="p">,</span> <span class="n">nnzG</span><span class="p">,</span>
+                                    <span class="n">tauFlag</span><span class="o">+</span><span class="n">subFlag</span><span class="p">))</span>
+        <span class="n">printTau</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">subspace</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="c1"># Update history info</span>
+        <span class="k">if</span> <span class="n">iterr</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">iterr</span> <span class="o">%</span> <span class="n">_allocSize</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span> <span class="c1"># enlarge allocation</span>
+            <span class="n">allocIncrement</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">_allocSize</span><span class="p">,</span> <span class="n">maxIts</span><span class="o">-</span><span class="n">xNorm1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">xNorm1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="n">xNorm1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">allocIncrement</span><span class="p">)))</span>
+            <span class="n">rNorm2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="n">rNorm2</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">allocIncrement</span><span class="p">)))</span>
+            <span class="n">lambdaa</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="n">lambdaa</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">allocIncrement</span><span class="p">)))</span>
+
+        <span class="n">xNorm1</span><span class="p">[</span><span class="n">iterr</span><span class="p">]</span> <span class="o">=</span> <span class="n">primal_norm</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">weights</span><span class="p">)</span>
+        <span class="n">rNorm2</span><span class="p">[</span><span class="n">iterr</span><span class="p">]</span> <span class="o">=</span> <span class="n">rNorm</span>
+        <span class="n">lambdaa</span><span class="p">[</span><span class="n">iterr</span><span class="p">]</span> <span class="o">=</span> <span class="n">gNorm</span>
+
+        <span class="k">if</span> <span class="n">stat</span><span class="p">:</span>
+            <span class="k">break</span>
+
+        <span class="c1"># Iterations begin here.</span>
+        <span class="n">iterr</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">xOld</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">fOld</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">gOld</span> <span class="o">=</span> <span class="n">g</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">rOld</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># Projected gradient step and linesearch.</span>
+            <span class="n">f</span><span class="p">,</span><span class="n">x</span><span class="p">,</span><span class="n">r</span><span class="p">,</span><span class="n">nLine</span><span class="p">,</span><span class="n">stepG</span><span class="p">,</span><span class="n">lnErr</span> <span class="o">=</span> \
+               <span class="n">_spg_line_curvy</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">gStep</span><span class="o">*</span><span class="n">g</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">lastFv</span><span class="p">),</span> <span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span>
+                               <span class="n">project</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
+            <span class="n">nProdA</span> <span class="o">+=</span> <span class="n">nLine</span>
+            <span class="n">nLineTot</span> <span class="o">=</span> <span class="n">nLineTot</span> <span class="o">+</span> <span class="n">nLine</span>
+            <span class="k">if</span> <span class="n">nProdA</span> <span class="o">+</span> <span class="n">nProdAt</span> <span class="o">&gt;</span> <span class="n">maxMatvec</span><span class="p">:</span>
+                <span class="n">stat</span> <span class="o">=</span> <span class="n">EXIT_MATVEC_LIMIT</span>
+                <span class="k">break</span>
+
+            <span class="k">if</span> <span class="n">lnErr</span><span class="p">:</span>
+                <span class="c1"># Projected backtrack failed.</span>
+                <span class="c1"># Retry with feasible dirn linesearch.</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">xOld</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">f</span> <span class="o">=</span> <span class="n">fOld</span>
+                <span class="n">dx</span> <span class="o">=</span> <span class="n">project</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">gStep</span><span class="o">*</span><span class="n">g</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span> <span class="o">-</span> <span class="n">x</span>
+                <span class="n">gtd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">g</span><span class="p">),</span> <span class="n">dx</span><span class="p">)</span>
+                <span class="n">f</span><span class="p">,</span><span class="n">x</span><span class="p">,</span><span class="n">r</span><span class="p">,</span><span class="n">nLine</span><span class="p">,</span><span class="n">lnErr</span> <span class="o">=</span> <span class="n">_spg_line</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">dx</span><span class="p">,</span> <span class="n">gtd</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">lastFv</span><span class="p">),</span> <span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+                <span class="n">nProdA</span> <span class="o">+=</span> <span class="n">nLine</span>
+                <span class="n">nLineTot</span> <span class="o">=</span> <span class="n">nLineTot</span> <span class="o">+</span> <span class="n">nLine</span>
+                <span class="k">if</span> <span class="n">nProdA</span> <span class="o">+</span> <span class="n">nProdAt</span> <span class="o">&gt;</span> <span class="n">maxMatvec</span><span class="p">:</span>
+                    <span class="n">stat</span> <span class="o">=</span> <span class="n">EXIT_MATVEC_LIMIT</span>
+                    <span class="k">break</span>
+
+                <span class="k">if</span> <span class="n">lnErr</span><span class="p">:</span>
+                    <span class="c1"># Failed again. Revert to previous iterates and damp max BB step.</span>
+                    <span class="n">x</span> <span class="o">=</span> <span class="n">xOld</span>
+                    <span class="n">f</span> <span class="o">=</span> <span class="n">fOld</span>
+                    <span class="k">if</span> <span class="n">maxLineErrors</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">stat</span> <span class="o">=</span> <span class="n">EXIT_LINE_ERROR</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">stepMax</span> <span class="o">=</span> <span class="n">stepMax</span> <span class="o">/</span> <span class="mf">10.</span>
+                        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;Linesearch failed with error </span><span class="si">%s</span><span class="s1">. &#39;</span>
+                                       <span class="s1">&#39;Damping max BB scaling to </span><span class="si">%s</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">lnErr</span><span class="p">,</span>
+                                       <span class="n">stepMax</span><span class="p">)</span>
+                        <span class="n">maxLineErrors</span> <span class="o">-=</span> <span class="mi">1</span>
+
+            <span class="c1"># Subspace minimization (only if active-set change is small).</span>
+            <span class="k">if</span> <span class="n">subspaceMin</span><span class="p">:</span>
+                <span class="n">g</span> <span class="o">=</span> <span class="o">-</span> <span class="n">A</span><span class="o">.</span><span class="n">rmatvec</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+                <span class="n">nProdAt</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">nnzX</span><span class="p">,</span><span class="n">nnzG</span><span class="p">,</span> <span class="n">nnzIdx</span><span class="p">,</span> <span class="n">nnzDiff</span> <span class="o">=</span> <span class="n">_active_vars</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">nnzOld</span><span class="p">,</span> <span class="n">optTol</span><span class="p">,</span>
+                                                          <span class="n">weights</span><span class="p">,</span> <span class="n">dual_norm</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">nnzDiff</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">nnzX</span> <span class="o">==</span> <span class="n">nnzG</span><span class="p">:</span>
+                        <span class="n">itnMaxLSQR</span> <span class="o">=</span> <span class="mi">20</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">itnMaxLSQR</span> <span class="o">=</span> <span class="mi">5</span>
+                    <span class="n">nnzIdx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">optTol</span>
+
+                    <span class="c1">#% LSQR parameters</span>
+                    <span class="n">damp</span>       <span class="o">=</span> <span class="mf">1e-5</span>
+                    <span class="n">aTol</span>       <span class="o">=</span> <span class="mf">1e-1</span>
+                    <span class="n">bTol</span>       <span class="o">=</span> <span class="mf">1e-1</span>
+                    <span class="n">conLim</span>     <span class="o">=</span> <span class="mf">1e12</span>
+                    <span class="n">showLSQR</span>   <span class="o">=</span> <span class="mf">0.</span>
+
+                    <span class="n">ebar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">nnzIdx</span><span class="p">])</span>
+                    <span class="n">nebar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">ebar</span><span class="p">)</span>
+                    <span class="n">Sprod</span> <span class="o">=</span> <span class="n">_LSQRprod</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">nnzIdx</span><span class="p">,</span> <span class="n">ebar</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+                    <span class="n">Sprod</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nebar</span><span class="p">)</span>
+                    <span class="n">Sprod</span><span class="o">.</span><span class="n">H</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+
+                    <span class="n">dxbar</span><span class="p">,</span> <span class="n">istop</span><span class="p">,</span> <span class="n">itnLSQR</span> <span class="o">=</span> \
+                       <span class="n">lsqr</span><span class="p">(</span><span class="n">Sprod</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">damp</span><span class="p">,</span> <span class="n">aTol</span><span class="p">,</span> <span class="n">bTol</span><span class="p">,</span> <span class="n">conLim</span><span class="p">,</span>
+                            <span class="n">itnMaxLSQR</span><span class="p">,</span> <span class="n">showLSQR</span><span class="p">)[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span>
+                    <span class="n">nProdA</span> <span class="o">+=</span> <span class="n">itnLSQR</span>
+                    <span class="n">nProdAt</span> <span class="o">+=</span> <span class="n">itnLSQR</span> <span class="o">+</span> <span class="mi">1</span>
+                    <span class="n">itnTotLSQR</span> <span class="o">=</span> <span class="n">itnTotLSQR</span> <span class="o">+</span> <span class="n">itnLSQR</span>
+
+                    <span class="c1"># LSQR iterations successful. Take the subspace step.</span>
+                    <span class="k">if</span> <span class="n">istop</span> <span class="o">!=</span> <span class="mi">4</span><span class="p">:</span>
+                        <span class="c1"># Push dx back into full space:  dx = Z dx.</span>
+                        <span class="n">dx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+                        <span class="n">dx</span><span class="p">[</span><span class="n">nnzIdx</span><span class="p">]</span> <span class="o">=</span> \
+                            <span class="n">dxbar</span> <span class="o">-</span> <span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="n">nebar</span><span class="p">)</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">ebar</span><span class="o">.</span><span class="n">T</span><span class="p">),</span>
+                                                            <span class="n">dxbar</span><span class="p">),</span> <span class="n">dxbar</span><span class="p">)</span>
+
+                        <span class="c1"># Find largest step to a change in sign.</span>
+                        <span class="n">block1</span> <span class="o">=</span> <span class="n">nnzIdx</span> <span class="o">&amp;</span>  <span class="p">(</span><span class="n">x</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>  <span class="o">&amp;</span>  <span class="p">(</span><span class="n">dx</span> <span class="o">&gt;</span> <span class="o">+</span><span class="n">pivTol</span><span class="p">)</span>
+                        <span class="n">block2</span> <span class="o">=</span> <span class="n">nnzIdx</span> <span class="o">&amp;</span>  <span class="p">(</span><span class="n">x</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>  <span class="o">&amp;</span>  <span class="p">(</span><span class="n">dx</span> <span class="o">&lt;</span> <span class="o">-</span><span class="n">pivTol</span><span class="p">)</span>
+                        <span class="n">alpha1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+                        <span class="n">alpha2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+                        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">block1</span><span class="p">):</span>
+                            <span class="n">alpha1</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="o">-</span><span class="n">x</span><span class="p">[</span><span class="n">block1</span><span class="p">]</span> <span class="o">/</span> <span class="n">dx</span><span class="p">[</span><span class="n">block1</span><span class="p">])</span>
+                        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">block2</span><span class="p">):</span>
+                            <span class="n">alpha2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="o">-</span><span class="n">x</span><span class="p">[</span><span class="n">block2</span><span class="p">]</span> <span class="o">/</span> <span class="n">dx</span><span class="p">[</span><span class="n">block2</span><span class="p">])</span>
+                        <span class="n">alpha</span> <span class="o">=</span> <span class="nb">min</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span><span class="n">alpha1</span><span class="p">,</span><span class="n">alpha2</span><span class="p">])</span>
+                        <span class="k">if</span> <span class="n">alpha</span><span class="o">&lt;</span><span class="mi">0</span><span class="p">:</span>
+                            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Alpha smaller than zero&#39;</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">ebar</span><span class="o">.</span><span class="n">T</span><span class="p">),</span> <span class="n">dx</span><span class="p">[</span><span class="n">nnzIdx</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">optTol</span><span class="p">:</span>
+                            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;NEED TO WRITE SOMETHING USEFUL&#39;</span><span class="p">)</span>
+                        <span class="c1"># Update variables.</span>
+                        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="n">alpha</span><span class="o">*</span><span class="n">dx</span>
+                        <span class="n">r</span> <span class="o">=</span> <span class="n">b</span> <span class="o">-</span> <span class="n">A</span><span class="o">.</span><span class="n">matvec</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                        <span class="n">f</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">r</span><span class="p">),</span> <span class="n">r</span><span class="p">))</span> <span class="o">/</span> <span class="mf">2.</span>
+                        <span class="n">subspace</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="n">nProdA</span> <span class="o">+=</span> <span class="mi">1</span>
+
+                <span class="k">if</span> <span class="n">primal_norm</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">tau</span> <span class="o">+</span> <span class="n">optTol</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Primal norm out of bound&#39;</span><span class="p">)</span>
+
+            <span class="c1">#---------------------------------------------------------------</span>
+            <span class="c1"># Update gradient and compute new Barzilai-Borwein scaling.</span>
+            <span class="c1">#---------------------------------------------------------------</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">lnErr</span><span class="p">:</span>
+                <span class="n">g</span> <span class="o">=</span> <span class="o">-</span> <span class="n">A</span><span class="o">.</span><span class="n">rmatvec</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+                <span class="n">nProdAt</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">xOld</span>
+                <span class="n">y</span> <span class="o">=</span> <span class="n">g</span> <span class="o">-</span> <span class="n">gOld</span>
+                <span class="n">sts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">s</span><span class="p">),</span> <span class="n">s</span><span class="p">)</span>
+                <span class="n">sty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">conj</span><span class="p">(</span><span class="n">s</span><span class="p">),</span> <span class="n">y</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">sty</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">gStep</span> <span class="o">=</span> <span class="n">stepMax</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">gStep</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">stepMax</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">stepMin</span><span class="p">,</span> <span class="n">sts</span><span class="o">/</span><span class="n">sty</span><span class="p">)</span> <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">gStep</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">stepMax</span><span class="p">,</span> <span class="n">gStep</span><span class="p">)</span>
+            <span class="k">break</span>
+
+        <span class="k">if</span> <span class="n">stat</span> <span class="o">==</span> <span class="n">EXIT_MATVEC_LIMIT</span><span class="p">:</span>
+            <span class="n">iterr</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">xOld</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="n">fOld</span>
+            <span class="n">g</span> <span class="o">=</span> <span class="n">gOld</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">rOld</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="k">break</span>
+
+        <span class="c1">#%------------------------------------------------------------------</span>
+        <span class="c1">#% Update function history.</span>
+        <span class="c1">#%------------------------------------------------------------------</span>
+        <span class="k">if</span> <span class="n">singleTau</span> <span class="ow">or</span> <span class="n">f</span> <span class="o">&gt;</span> <span class="n">sigma</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="mf">2.</span><span class="p">:</span> <span class="c1">#% Dont update if superoptimal.</span>
+            <span class="n">lastFv</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">mod</span><span class="p">(</span><span class="n">iterr</span><span class="p">,</span><span class="n">nPrevVals</span><span class="p">)]</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">fBest</span> <span class="o">&gt;</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">fBest</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">xBest</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="c1">#% Restore best solution (only if solving single problem).</span>
+    <span class="k">if</span> <span class="n">singleTau</span> <span class="ow">and</span> <span class="n">f</span> <span class="o">&gt;</span> <span class="n">fBest</span><span class="p">:</span>
+        <span class="n">rNorm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">2.</span><span class="o">*</span><span class="n">fBest</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Restoring best iterate to objective &#39;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">rNorm</span><span class="p">))</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">xBest</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">b</span> <span class="o">-</span> <span class="n">A</span><span class="o">.</span><span class="n">matvec</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">g</span> <span class="o">=</span>   <span class="o">-</span> <span class="n">A</span><span class="o">.</span><span class="n">rmatvec</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="n">gNorm</span> <span class="o">=</span> <span class="n">dual_norm</span><span class="p">(</span><span class="n">g</span><span class="p">,</span><span class="n">weights</span><span class="p">)</span>
+        <span class="n">rNorm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="n">nProdA</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">nProdAt</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="c1"># Final cleanup before exit.</span>
+    <span class="n">info</span><span class="o">=</span><span class="p">{}</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;tau&#39;</span><span class="p">]</span>         <span class="o">=</span> <span class="n">tau</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;rNorm&#39;</span><span class="p">]</span>       <span class="o">=</span> <span class="n">rNorm</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;rGap&#39;</span><span class="p">]</span>        <span class="o">=</span> <span class="n">rGap</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;gNorm&#39;</span><span class="p">]</span>       <span class="o">=</span> <span class="n">gNorm</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;stat&#39;</span><span class="p">]</span>        <span class="o">=</span> <span class="n">stat</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;iterr&#39;</span><span class="p">]</span>       <span class="o">=</span> <span class="n">iterr</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;nProdA&#39;</span><span class="p">]</span>      <span class="o">=</span> <span class="n">nProdA</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;nProdAt&#39;</span><span class="p">]</span>     <span class="o">=</span> <span class="n">nProdAt</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;nNewton&#39;</span><span class="p">]</span>     <span class="o">=</span> <span class="n">nNewton</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;timeProject&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">timeProject</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;timeMatProd&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">timeMatProd</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;itnLSQR&#39;</span><span class="p">]</span>     <span class="o">=</span> <span class="n">itnTotLSQR</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;timeTotal&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;xNorm1&#39;</span><span class="p">]</span>      <span class="o">=</span> <span class="n">xNorm1</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">iterr</span><span class="p">]</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;rNorm2&#39;</span><span class="p">]</span>      <span class="o">=</span> <span class="n">rNorm2</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">iterr</span><span class="p">]</span>
+    <span class="n">info</span><span class="p">[</span><span class="s1">&#39;lambdaa&#39;</span><span class="p">]</span>     <span class="o">=</span> <span class="n">lambdaa</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">iterr</span><span class="p">]</span>
+
+    <span class="c1"># Print final output.</span>
+    <span class="k">if</span> <span class="n">verbosity</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">stat</span> <span class="o">==</span> <span class="n">EXIT_OPTIMAL</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;EXIT -- Optimal solution found&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">stat</span> <span class="o">==</span> <span class="n">EXIT_ITERATIONS</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;ERROR EXIT -- Too many iterations&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">stat</span> <span class="o">==</span> <span class="n">EXIT_ROOT_FOUND</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;EXIT -- Found a root&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">stat</span> <span class="o">==</span> <span class="n">EXIT_BPSOL_FOUND</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;EXIT -- Found a BP solution&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">stat</span> <span class="o">==</span> <span class="n">EXIT_LEAST_SQUARES</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;EXIT -- Found a least-squares solution&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">stat</span> <span class="o">==</span> <span class="n">EXIT_LINE_ERROR</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;ERROR EXIT -- Linesearch error (#</span><span class="si">%i</span><span class="s1">)</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">lnErr</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">stat</span> <span class="o">==</span> <span class="n">EXIT_SUBOPTIMAL_BP</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;EXIT -- Found a suboptimal BP solution&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">stat</span> <span class="o">==</span> <span class="n">EXIT_MATVEC_LIMIT</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;EXIT -- Maximum matrix-vector operations reached&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">stat</span> <span class="o">==</span> <span class="n">EXIT_ACTIVE_SET</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;EXIT -- Found a possible active set&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;SPGL1 ERROR: Unknown termination condition&#39;</span><span class="p">)</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-20s</span><span class="s1">:  </span><span class="si">%6i</span><span class="s1"> </span><span class="si">%6s</span><span class="s1"> </span><span class="si">%-20s</span><span class="s1">:  </span><span class="si">%6.1f</span><span class="s1">&#39;</span> <span class="o">%</span>
+                <span class="p">(</span><span class="s1">&#39;Products with A&#39;</span><span class="p">,</span> <span class="n">nProdA</span><span class="p">,</span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="s1">&#39;Total time   (secs)&#39;</span><span class="p">,</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;timeTotal&#39;</span><span class="p">]))</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-20s</span><span class="s1">:  </span><span class="si">%6i</span><span class="s1"> </span><span class="si">%6s</span><span class="s1"> </span><span class="si">%-20s</span><span class="s1">:  </span><span class="si">%6.1f</span><span class="s1">&#39;</span> <span class="o">%</span>
+                <span class="p">(</span><span class="s1">&#39;Products with A^H&#39;</span><span class="p">,</span> <span class="n">nProdAt</span><span class="p">,</span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="s1">&#39;Project time (secs)&#39;</span><span class="p">,</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;timeProject&#39;</span><span class="p">]))</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">%-20s</span><span class="s1">:  </span><span class="si">%6i</span><span class="s1"> </span><span class="si">%6s</span><span class="s1"> </span><span class="si">%-20s</span><span class="s1">:  </span><span class="si">%6.1f</span><span class="s1">&#39;</span> <span class="o">%</span>
+                <span class="p">(</span><span class="s1">&#39;Newton iterations&#39;</span><span class="p">,</span><span class="n">nNewton</span><span class="p">,</span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="s1">&#39;Mat-vec time (secs)&#39;</span><span class="p">,</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;timeMatProd&#39;</span><span class="p">]))</span>
+        <span class="n">_printf</span><span class="p">(</span><span class="n">fid</span><span class="p">,</span>  <span class="s1">&#39;</span><span class="si">%-20s</span><span class="s1">:  </span><span class="si">%6i</span><span class="s1"> </span><span class="si">%6s</span><span class="s1"> </span><span class="si">%-20s</span><span class="s1">:  </span><span class="si">%6i</span><span class="s1">&#39;</span> <span class="o">%</span>
+                <span class="p">(</span><span class="s1">&#39;Line search its&#39;</span><span class="p">,</span><span class="n">nLineTot</span><span class="p">,</span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="s1">&#39;Subspace iterations&#39;</span><span class="p">,</span><span class="n">itnTotLSQR</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">x</span><span class="p">,</span><span class="n">r</span><span class="p">,</span><span class="n">g</span><span class="p">,</span><span class="n">info</span></div>
+
+
+<div class="viewcode-block" id="spg_bp"><a class="viewcode-back" href="../api/generated/spgl1.spg_bp.html#spgl1.spg_bp">[docs]</a><span class="k">def</span> <span class="nf">spg_bp</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Basis pursuit (BP) problem</span>
+
+<span class="sd">    ``spg_bp`` is designed to solve the basis pursuit problem::</span>
+
+<span class="sd">        (BP)  minimize  ||x||_1  subject to  Ax = b,</span>
+
+<span class="sd">    where ``A`` is an M-by-N matrix, ``b`` is an M-vector.</span>
+<span class="sd">    ``A`` can be an explicit M-by-N matrix or a</span>
+<span class="sd">    :class:`scipy.sparse.linalg.LinearOperator`.</span>
+
+<span class="sd">    This is equivalent to calling ``spgl1(A, b, tau=0, sigma=0)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    A : {sparse matrix, ndarray, LinearOperator}</span>
+<span class="sd">        Representation of an m-by-n matrix.  It is required that</span>
+<span class="sd">        the linear operator can produce ``Ax`` and ``A^T x``.</span>
+<span class="sd">    b : array_like, shape (m,)</span>
+<span class="sd">        Right-hand side vector ``b``.</span>
+<span class="sd">    kwargs : dict, optional</span>
+<span class="sd">        Additional input parameters (refer to :func:`spgl1.spgl1` for a list</span>
+<span class="sd">        of possible parameters)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    x : array_like, shape (n,)</span>
+<span class="sd">        Inverted model</span>
+<span class="sd">    r : array_like, shape (m,)</span>
+<span class="sd">        Final residual</span>
+<span class="sd">    g : array_like, shape (h,)</span>
+<span class="sd">        Final gradient</span>
+<span class="sd">    info : dict</span>
+<span class="sd">        Dictionary with the following information:</span>
+
+<span class="sd">        ``.tau``, final value of tau (see sigma above)</span>
+
+<span class="sd">        ``.rNorm``, two-norm of the optimal residual</span>
+
+<span class="sd">        ``.rGap``, relative duality gap (an optimality measure)</span>
+
+<span class="sd">        ``.gNorm``, Lagrange multiplier of (LASSO)</span>
+
+<span class="sd">        ``.stat``,</span>
+<span class="sd">           ``1``: found a BPDN solution,</span>
+<span class="sd">           ``2``: found a BP solution; exit based on small gradient,</span>
+<span class="sd">           ``3``: found a BP solution; exit based on small residual,</span>
+<span class="sd">           ``4: found a LASSO solution,</span>
+<span class="sd">           ``5``: error: too many iterations,</span>
+<span class="sd">           ``6``: error: linesearch failed,</span>
+<span class="sd">           ``7``: error: found suboptimal BP solution,</span>
+<span class="sd">           ``8``: error: too many matrix-vector products</span>
+
+<span class="sd">        ``.time``, total solution time (seconds)</span>
+
+<span class="sd">        ``.nProdA``, number of multiplications with ``A``</span>
+
+<span class="sd">        ``.nProdAt``, number of multiplications with ``A&#39;``</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">sigma</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">tau</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">x0</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="n">spgl1</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">tau</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="n">x0</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">x</span><span class="p">,</span><span class="n">r</span><span class="p">,</span><span class="n">g</span><span class="p">,</span><span class="n">info</span></div>
+
+
+<div class="viewcode-block" id="spg_bpdn"><a class="viewcode-back" href="../api/generated/spgl1.spg_bpdn.html#spgl1.spg_bpdn">[docs]</a><span class="k">def</span> <span class="nf">spg_bpdn</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Basis pursuit denoise (BPDN) problem.</span>
+
+
+<span class="sd">    ``spg_bpdn`` is designed to solve the basis pursuit denoise problem::</span>
+
+<span class="sd">        (BPDN)  minimize  ||x||_1  subject to  ||A x - b|| &lt;= sigma</span>
+
+<span class="sd">    where ``A`` is an M-by-N matrix, ``b`` is an M-vector.</span>
+<span class="sd">    ``A`` can be an explicit M-by-N matrix or a</span>
+<span class="sd">    :class:`scipy.sparse.linalg.LinearOperator`.</span>
+
+<span class="sd">    This is equivalent to calling ``spgl1(A, b, tau=0, sigma=sigma)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    A : {sparse matrix, ndarray, LinearOperator}</span>
+<span class="sd">        Representation of an m-by-n matrix.  It is required that</span>
+<span class="sd">        the linear operator can produce ``Ax`` and ``A^T x``.</span>
+<span class="sd">    b : array_like, shape (m,)</span>
+<span class="sd">        Right-hand side vector ``b``.</span>
+<span class="sd">    kwargs : dict, optional</span>
+<span class="sd">        Additional input parameters (refer to :func:`spgl1.spgl1` for a list</span>
+<span class="sd">        of possible parameters)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    x : array_like, shape (n,)</span>
+<span class="sd">        Inverted model</span>
+<span class="sd">    r : array_like, shape (m,)</span>
+<span class="sd">        Final residual</span>
+<span class="sd">    g : array_like, shape (h,)</span>
+<span class="sd">        Final gradient</span>
+<span class="sd">    info : dict</span>
+<span class="sd">        Dictionary with the following information:</span>
+
+<span class="sd">        ``.tau``, final value of tau (see sigma above)</span>
+
+<span class="sd">        ``.rNorm``, two-norm of the optimal residual</span>
+
+<span class="sd">        ``.rGap``, relative duality gap (an optimality measure)</span>
+
+<span class="sd">        ``.gNorm``, Lagrange multiplier of (LASSO)</span>
+
+<span class="sd">        ``.stat``,</span>
+<span class="sd">           ``1``: found a BPDN solution,</span>
+<span class="sd">           ``2``: found a BP solution; exit based on small gradient,</span>
+<span class="sd">           ``3``: found a BP solution; exit based on small residual,</span>
+<span class="sd">           ``4: found a LASSO solution,</span>
+<span class="sd">           ``5``: error: too many iterations,</span>
+<span class="sd">           ``6``: error: linesearch failed,</span>
+<span class="sd">           ``7``: error: found suboptimal BP solution,</span>
+<span class="sd">           ``8``: error: too many matrix-vector products</span>
+
+<span class="sd">        ``.time``, total solution time (seconds)</span>
+
+<span class="sd">        ``.nProdA``, number of multiplications with A</span>
+
+<span class="sd">        ``.nProdAt``, number of multiplications with A&#39;</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tau</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">x0</span>  <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">spgl1</span><span class="p">(</span><span class="n">A</span><span class="p">,</span><span class="n">b</span><span class="p">,</span><span class="n">tau</span><span class="p">,</span><span class="n">sigma</span><span class="p">,</span><span class="n">x0</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="spg_lasso"><a class="viewcode-back" href="../api/generated/spgl1.spg_lasso.html#spgl1.spg_lasso">[docs]</a><span class="k">def</span> <span class="nf">spg_lasso</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">tau</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;LASSO problem</span>
+
+
+<span class="sd">    ``spg_lasso`` is designed to solve the Lasso problem::</span>
+
+<span class="sd">        (LASSO)  minimize  ||Ax - b||_2  subject to  ||x||_1 &lt;= tau</span>
+
+<span class="sd">    where ``A`` is an M-by-N matrix, ``b`` is an M-vector.</span>
+<span class="sd">    ``A`` can be an explicit M-by-N matrix or a</span>
+<span class="sd">    :class:`scipy.sparse.linalg.LinearOperator`.</span>
+
+<span class="sd">    This is equivalent to calling ``spgl1(A, b, tau=tau, sigma=0)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    A : {sparse matrix, ndarray, LinearOperator}</span>
+<span class="sd">        Representation of an m-by-n matrix.  It is required that</span>
+<span class="sd">        the linear operator can produce ``Ax`` and ``A^T x``.</span>
+<span class="sd">    b : array_like, shape (m,)</span>
+<span class="sd">        Right-hand side vector ``b``.</span>
+<span class="sd">    kwargs : dict, optional</span>
+<span class="sd">        Additional input parameters (refer to :func:`spgl1.spgl1` for a list</span>
+<span class="sd">        of possible parameters)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    x : array_like, shape (n,)</span>
+<span class="sd">        Inverted model</span>
+<span class="sd">    r : array_like, shape (m,)</span>
+<span class="sd">        Final residual</span>
+<span class="sd">    g : array_like, shape (h,)</span>
+<span class="sd">        Final gradient</span>
+<span class="sd">    info : dict</span>
+<span class="sd">        Dictionary with the following information:</span>
+
+<span class="sd">        ``.tau``, final value of tau (see sigma above)</span>
+
+<span class="sd">        ``.rNorm``, two-norm of the optimal residual</span>
+
+<span class="sd">        ``.rGap``, relative duality gap (an optimality measure)</span>
+
+<span class="sd">        ``.gNorm``, Lagrange multiplier of (LASSO)</span>
+
+<span class="sd">        ``.stat``,</span>
+<span class="sd">           ``1``: found a BPDN solution,</span>
+<span class="sd">           ``2``: found a BP solution; exit based on small gradient,</span>
+<span class="sd">           ``3``: found a BP solution; exit based on small residual,</span>
+<span class="sd">           ``4: found a LASSO solution,</span>
+<span class="sd">           ``5``: error: too many iterations,</span>
+<span class="sd">           ``6``: error: linesearch failed,</span>
+<span class="sd">           ``7``: error: found suboptimal BP solution,</span>
+<span class="sd">           ``8``: error: too many matrix-vector products</span>
+
+<span class="sd">        ``.time``, total solution time (seconds)</span>
+
+<span class="sd">        ``.nProdA``, number of multiplications with A</span>
+
+<span class="sd">        ``.nProdAt``, number of multiplications with A&#39;</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">sigma</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">x0</span>  <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">spgl1</span><span class="p">(</span><span class="n">A</span><span class="p">,</span><span class="n">b</span><span class="p">,</span><span class="n">tau</span><span class="p">,</span><span class="n">sigma</span><span class="p">,</span><span class="n">x0</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="spg_mmv"><a class="viewcode-back" href="../api/generated/spgl1.spg_mmv.html#spgl1.spg_mmv">[docs]</a><span class="k">def</span> <span class="nf">spg_mmv</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">aslinearoperator</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
+    <span class="n">m</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">groups</span> <span class="o">=</span> <span class="n">B</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">_blockdiag</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">groups</span><span class="p">)</span>
+
+    <span class="c1"># Set projection specific functions</span>
+    <span class="n">project</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">weight</span><span class="p">,</span> <span class="n">tau</span><span class="p">:</span> <span class="n">_norm_l12_project</span><span class="p">(</span><span class="n">groups</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">weight</span><span class="p">,</span> <span class="n">tau</span><span class="p">)</span>
+    <span class="n">primal_norm</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">weight</span><span class="p">:</span> <span class="n">_norm_l12_primal</span><span class="p">(</span><span class="n">groups</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">weight</span><span class="p">)</span>
+    <span class="n">dual_norm</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">weight</span><span class="p">:</span> <span class="n">_norm_l12_dual</span><span class="p">(</span><span class="n">groups</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">weight</span><span class="p">)</span>
+
+    <span class="n">tau</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">x0</span>  <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="n">spgl1</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">B</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">tau</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="n">x0</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="n">project</span><span class="p">,</span>
+                          <span class="n">primal_norm</span><span class="o">=</span><span class="n">primal_norm</span><span class="p">,</span> <span class="n">dual_norm</span><span class="o">=</span><span class="n">dual_norm</span><span class="p">,</span>
+                          <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">groups</span><span class="p">)</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">g</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">groups</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">info</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2019.
+      Last updated on May 06, 2019.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'../',
+            VERSION:'',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true
+        };
+    </script>
+      <script type="text/javascript" src="../_static/jquery.js"></script>
+      <script type="text/javascript" src="../_static/underscore.js"></script>
+      <script type="text/javascript" src="../_static/doctools.js"></script>
+      <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+  
+
+  
+  
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+  
+
+  
+  
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.StickyNav.enable();
+      });
+  </script>
+   
+
+</body>
+</html>

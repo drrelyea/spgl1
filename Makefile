@@ -32,3 +32,10 @@ dev-install_conda:
 tests:
 	make pythoncheck
 	$(PYTHON) setup.py test
+
+doc:
+	cd docs  && rm -rf source/api/generated &&\
+	rm -rf source/tutorials && rm -rf build && make html && cd ..
+
+docupdate:
+	cd docs && make html && cd ..

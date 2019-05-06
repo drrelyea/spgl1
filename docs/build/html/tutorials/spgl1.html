@@ -1,0 +1,579 @@
+
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+    
+        <title>SPGL1 Tutorial &mdash; SPGL1</title>
+    
+
+
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  
+  
+    <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  
+
+  
+    <link rel="stylesheet" href="../_static/gallery.css" type="text/css" />
+  
+    <link rel="stylesheet" href="../_static/style.css" type="text/css" />
+  
+
+  
+        <link rel="index" title="Index"
+              href="../genindex.html"/>
+        <link rel="search" title="Search" href="../search.html"/>
+    <link rel="top" title="SPGL1" href="../index.html"/>
+        <link rel="up" title="Tutorials" href="index.html"/>
+        <link rel="next" title="Contributors" href="../credits.html"/>
+        <link rel="prev" title="Tutorials" href="index.html"/>
+    
+    <script src="../_static/require.js"></script>
+
+
+  
+  <script src="../_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> SPGL1
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                dev
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+    
+            
+            
+                <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">Reference documentation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Tutorials</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">SPGL1 Tutorial</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../credits.html">Credits</a></li>
+</ul>
+
+            
+          
+
+    
+        <p class="caption">
+            <span class="caption-text">
+            
+                Repository
+            
+            </span>
+        </p>
+        <ul>
+            
+                <li class="toctree-l1"><a href="https://github.com/drrelyea/SPGL1_python_port"><i class="fa fa-github fa-fw"></i> Source Code</a></li>
+            
+        </ul>
+    
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="../index.html">SPGL1</a>
+      </nav>
+
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          
+
+
+ 
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../index.html">Docs</a> &raquo;</li>
+      
+          <li><a href="index.html">Tutorials</a> &raquo;</li>
+      
+    <li>SPGL1 Tutorial</li>
+      <li class="wy-breadcrumbs-aside">
+        
+          
+        
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  
+<style>
+/* CSS overrides for sphinx_rtd_theme */
+
+/* 24px margin */
+.nbinput.nblast,
+.nboutput.nblast {
+    margin-bottom: 19px;  /* padding has already 5px */
+}
+
+/* ... except between code cells! */
+.nblast + .nbinput {
+    margin-top: -19px;
+}
+
+.admonition > p:before {
+    margin-right: 4px;  /* make room for the exclamation icon */
+}
+</style>
+<div class="sphx-glr-download-link-note admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Click <a class="reference internal" href="#sphx-glr-download-tutorials-spgl1-py"><span class="std std-ref">here</span></a> to download the full example code</p>
+</div>
+<div class="sphx-glr-example-title section" id="spgl1-tutorial">
+<span id="sphx-glr-tutorials-spgl1-py"></span><h1>SPGL1 Tutorial<a class="headerlink" href="#spgl1-tutorial" title="Permalink to this headline">¶</a></h1>
+<p>In this tutorial we will explore the different solvers in the <code class="docutils literal notranslate"><span class="pre">spgl1</span></code>
+package and apply them to different toy examples.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+
+<span class="kn">from</span> <span class="nn">scipy.sparse.linalg</span> <span class="kn">import</span> <a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.LinearOperator.html#scipy.sparse.linalg.LinearOperator" title="View documentation for scipy.sparse.linalg.LinearOperator"><span class="n">LinearOperator</span></a>
+<span class="kn">from</span> <span class="nn">scipy.sparse</span> <span class="kn">import</span> <span class="n">spdiags</span>
+<span class="kn">import</span> <span class="nn">spgl1</span>
+
+<span class="c1"># Initialize random number generators</span>
+<a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.random.seed.html#numpy.random.seed" title="View documentation for numpy.random.seed"><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span></a><span class="p">(</span><span class="mi">43273289</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Create random m-by-n encoding matrix and sparse vector</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">m</span> <span class="o">=</span> <span class="mi">50</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">128</span>
+<span class="n">k</span> <span class="o">=</span> <span class="mi">14</span>
+<span class="p">[</span><span class="n">A</span><span class="p">,</span><span class="n">Rtmp</span><span class="p">]</span> <span class="o">=</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.linalg.qr.html#numpy.linalg.qr" title="View documentation for numpy.linalg.qr"><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">qr</span></a><span class="p">(</span><a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.random.randn.html#numpy.random.randn" title="View documentation for numpy.random.randn"><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span></a><span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="n">m</span><span class="p">),</span><span class="s1">&#39;reduced&#39;</span><span class="p">)</span>
+<span class="n">A</span>  <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">T</span>
+<span class="n">p</span>  <span class="o">=</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.random.permutation.html#numpy.random.permutation" title="View documentation for numpy.random.permutation"><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span></a><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">k</span><span class="p">]</span>
+<span class="n">x0</span> <span class="o">=</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.zeros.html#numpy.zeros" title="View documentation for numpy.zeros"><span class="n">np</span><span class="o">.</span><span class="n">zeros</span></a><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+<span class="n">x0</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.random.randn.html#numpy.random.randn" title="View documentation for numpy.random.randn"><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span></a><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Solve the underdetermined LASSO problem for <span class="math notranslate nohighlight">\(||x||_1 &lt;= \pi\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[min.||Ax-b||_2 \quad subject \quad  to \quad ||x||_1 &lt;= \pi\]</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">b</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">x0</span><span class="p">)</span>
+<span class="n">tau</span> <span class="o">=</span> <a href="https://docs.scipy.org/doc/numpy/reference/constants.html#numpy.pi" title="View documentation for numpy.pi"><span class="n">np</span><span class="o">.</span><span class="n">pi</span></a>
+<span class="n">x</span><span class="p">,</span><span class="n">resid</span><span class="p">,</span><span class="n">grad</span><span class="p">,</span><span class="n">info</span> <span class="o">=</span> <a href="../api/generated/spgl1.spg_lasso.html#spgl1.spg_lasso" title="View documentation for spgl1.spg_lasso"><span class="n">spgl1</span><span class="o">.</span><span class="n">spg_lasso</span></a><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">tau</span><span class="p">,</span> <span class="n">verbosity</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%s%s%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="o">*</span><span class="mi">35</span><span class="p">,</span><span class="s1">&#39; Solution &#39;</span><span class="p">,</span><span class="s1">&#39;-&#39;</span><span class="o">*</span><span class="mi">35</span><span class="p">))</span>
+<span class="k">print</span><span class="p">(</span><span class="s1">&#39;nonzeros(x) = </span><span class="si">%i</span><span class="s1">,   ||x||_1 = </span><span class="si">%12.6e</span><span class="s1">,   ||x||_1 - pi = </span><span class="si">%13.6e</span><span class="s1">&#39;</span> <span class="o">%</span>
+      <span class="p">(</span><a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.sum.html#numpy.sum" title="View documentation for numpy.sum"><span class="n">np</span><span class="o">.</span><span class="n">sum</span></a><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">&gt;</span><span class="mf">1e-5</span><span class="p">),</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.linalg.norm.html#numpy.linalg.norm" title="View documentation for numpy.linalg.norm"><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span></a><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.linalg.norm.html#numpy.linalg.norm" title="View documentation for numpy.linalg.norm"><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span></a><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span><span class="o">-</span><a href="https://docs.scipy.org/doc/numpy/reference/constants.html#numpy.pi" title="View documentation for numpy.pi"><span class="n">np</span><span class="o">.</span><span class="n">pi</span></a><span class="p">))</span>
+<span class="k">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="o">*</span><span class="mi">80</span><span class="p">))</span>
+</pre></div>
+</div>
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>================================================================================
+SPGL1
+================================================================================
+No. rows              :       50
+No. columns           :      128
+
+Initial tau           : 3.14e+00
+Two-norm of b         : 3.40e+00
+
+Optimality tol        : 1.00e-04
+Target one-norm of x  : 3.14e+00
+
+Basis pursuit tol     : 1.00e-06
+Maximum iterations    :      500
+
+
+
+EXIT -- Optimal solution found
+
+
+Products with A     :       1        Total time   (secs) :     0.0
+Products with A^H   :       8        Project time (secs) :     0.0
+Newton iterations   :       0        Mat-vec time (secs) :     0.0
+Line search its     :       0        Subspace iterations :       0
+----------------------------------- Solution -----------------------------------
+nonzeros(x) = 7,   ||x||_1 = 3.141593e+00,   ||x||_1 - pi =  8.881784e-16
+--------------------------------------------------------------------------------
+</pre></div>
+</div>
+<p>Solve the basis pursuit (BP) problem:
+.. math:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nb">min</span><span class="o">.</span>  <span class="o">||</span><span class="n">x</span><span class="o">||</span><span class="n">_1</span> \<span class="n">quad</span> <span class="n">subject</span> \<span class="n">quad</span>  <span class="n">to</span> \<span class="n">quad</span>  <span class="n">Ax</span> <span class="o">=</span> <span class="n">b</span>
+</pre></div>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">b</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">x0</span><span class="p">)</span>
+<span class="n">x</span><span class="p">,</span><span class="n">resid</span><span class="p">,</span><span class="n">grad</span><span class="p">,</span><span class="n">info</span> <span class="o">=</span> <a href="../api/generated/spgl1.spg_bp.html#spgl1.spg_bp" title="View documentation for spgl1.spg_bp"><span class="n">spgl1</span><span class="o">.</span><span class="n">spg_bp</span></a><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">verbosity</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.figure.html#matplotlib.pyplot.figure" title="View documentation for matplotlib.pyplot.figure"><span class="n">plt</span><span class="o">.</span><span class="n">figure</span></a><span class="p">()</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><span class="n">x0</span><span class="p">,</span><span class="s1">&#39;ro&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.legend.html#matplotlib.pyplot.legend" title="View documentation for matplotlib.pyplot.legend"><span class="n">plt</span><span class="o">.</span><span class="n">legend</span></a><span class="p">((</span><span class="s1">&#39;Recovered coefficients&#39;</span><span class="p">,</span><span class="s1">&#39;Original coefficients&#39;</span><span class="p">))</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.title.html#matplotlib.pyplot.title" title="View documentation for matplotlib.pyplot.title"><span class="n">plt</span><span class="o">.</span><span class="n">title</span></a><span class="p">(</span><span class="s1">&#39;(a) Basis Pursuit&#39;</span><span class="p">)</span>
+
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.figure.html#matplotlib.pyplot.figure" title="View documentation for matplotlib.pyplot.figure"><span class="n">plt</span><span class="o">.</span><span class="n">figure</span></a><span class="p">()</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;xNorm1&#39;</span><span class="p">],</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;rNorm2&#39;</span><span class="p">],</span> <span class="s1">&#39;.-k&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.xlabel.html#matplotlib.pyplot.xlabel" title="View documentation for matplotlib.pyplot.xlabel"><span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span></a><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;$||x||_1$&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.ylabel.html#matplotlib.pyplot.ylabel" title="View documentation for matplotlib.pyplot.ylabel"><span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span></a><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;$||r||_2$&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.title.html#matplotlib.pyplot.title" title="View documentation for matplotlib.pyplot.title"><span class="n">plt</span><span class="o">.</span><span class="n">title</span></a><span class="p">(</span><span class="s1">&#39;Pareto curve&#39;</span><span class="p">)</span>
+
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.figure.html#matplotlib.pyplot.figure" title="View documentation for matplotlib.pyplot.figure"><span class="n">plt</span><span class="o">.</span><span class="n">figure</span></a><span class="p">()</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.arange.html#numpy.arange" title="View documentation for numpy.arange"><span class="n">np</span><span class="o">.</span><span class="n">arange</span></a><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;iterr&#39;</span><span class="p">]),</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;rNorm2&#39;</span><span class="p">]</span><span class="o">/</span><span class="nb">max</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;rNorm2&#39;</span><span class="p">]),</span>
+         <span class="s1">&#39;.-k&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">r</span><span class="s1">&#39;$||r||_2$&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.arange.html#numpy.arange" title="View documentation for numpy.arange"><span class="n">np</span><span class="o">.</span><span class="n">arange</span></a><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;iterr&#39;</span><span class="p">]),</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;xNorm1&#39;</span><span class="p">]</span><span class="o">/</span><span class="nb">max</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;xNorm1&#39;</span><span class="p">]),</span>
+         <span class="s1">&#39;.-r&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">r</span><span class="s1">&#39;$||x||_1$&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.xlabel.html#matplotlib.pyplot.xlabel" title="View documentation for matplotlib.pyplot.xlabel"><span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span></a><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;#iter&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.ylabel.html#matplotlib.pyplot.ylabel" title="View documentation for matplotlib.pyplot.ylabel"><span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span></a><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;$||r||_2/||x||_1$&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.title.html#matplotlib.pyplot.title" title="View documentation for matplotlib.pyplot.title"><span class="n">plt</span><span class="o">.</span><span class="n">title</span></a><span class="p">(</span><span class="s1">&#39;Norms&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<ul class="sphx-glr-horizontal">
+<li><img alt="../_images/sphx_glr_spgl1_001.png" class="sphx-glr-multi-img first" src="../_images/sphx_glr_spgl1_001.png" />
+</li>
+<li><img alt="../_images/sphx_glr_spgl1_002.png" class="sphx-glr-multi-img first" src="../_images/sphx_glr_spgl1_002.png" />
+</li>
+<li><img alt="../_images/sphx_glr_spgl1_003.png" class="sphx-glr-multi-img first" src="../_images/sphx_glr_spgl1_003.png" />
+</li>
+</ul>
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>================================================================================
+SPGL1
+================================================================================
+No. rows              :       50
+No. columns           :      128
+
+Initial tau           : 0.00e+00
+Two-norm of b         : 3.40e+00
+
+Optimality tol        : 1.00e-04
+Target objective      : 0.00e+00
+
+Basis pursuit tol     : 1.00e-06
+Maximum iterations    :      500
+
+iterr      Objective   Relative Gap  Rel Error      gNorm   stepG    nnzX    nnzG     tau
+
+    0  3.3978494e+00  0.0000000e+00   1.00e+00  8.995e-01     0.0       0       0  1.2834830e+01
+    1  1.4610032e+00  1.6532743e+00   1.00e+00  3.459e-01    -0.6      67       1
+    2  1.2957367e+00  1.4480527e+00   1.00e+00  3.057e-01     0.0      53       1
+    3  1.0445582e+00  1.0186987e+00   1.00e+00  2.394e-01     0.0      33       1
+    4  9.8320803e-01  1.9671347e+00   9.83e-01  3.006e-01     0.0      17       1
+    5  1.0408537e+00  2.7237524e+00   1.00e+00  3.273e-01     0.0      15       1
+    6  8.3766484e-01  4.4627639e-01   8.38e-01  1.829e-01     0.0      20       1
+    7  8.2370803e-01  2.1784189e-01   8.24e-01  1.661e-01     0.0      16       1
+    8  8.1471442e-01  1.0576174e-01   8.15e-01  1.582e-01     0.0      15       1
+    9  8.1352564e-01  1.2833205e-01   8.14e-01  1.618e-01     0.0      12       2
+   10  8.1346284e-01  1.2136051e-01   8.13e-01  1.595e-01     0.0      12       3
+   12  8.1283336e-01  1.6431186e-03   8.13e-01  1.509e-01     0.0      12      12  1.7214207e+01
+   20  1.0262800e-01  3.7124664e-02   1.03e-01  1.684e-02     0.0      55       5
+   30  5.8775070e-02  2.1151854e-02   5.88e-02  9.905e-03     0.0      26       5
+   39  5.6081993e-02  3.4487799e-03   5.61e-02  9.059e-03     0.0      16      16  1.7561410e+01
+   40  1.3497461e-02  2.3368157e-02   1.35e-02  2.563e-03     0.0      61      17
+   50  6.5248570e-03  2.5729401e-02   6.52e-03  2.012e-03    -0.6      44       8
+   60  3.6779037e-03  8.0294188e-03   3.68e-03  8.458e-04    -0.9      30      30
+   70  1.7198692e-03  6.8520394e-04   1.72e-03  2.801e-04     0.0      17      17
+   80  1.3668596e-03  8.5588972e-05   1.37e-03  2.204e-04     0.0      14      14
+   82  1.3666459e-03  1.8193226e-05   1.37e-03  2.163e-04     0.0      14      14  1.7570044e+01
+   90  1.3860943e-04  4.2028246e-05   1.39e-04  2.222e-05     0.0      14      14
+   98  8.6425580e-05  5.4782374e-05   8.64e-05  1.545e-05     0.0      14      14
+
+
+EXIT -- Found a root
+
+
+Products with A     :      33        Total time   (secs) :     0.1
+Products with A^H   :      99        Project time (secs) :     0.0
+Newton iterations   :       4        Mat-vec time (secs) :     0.0
+Line search its     :      32        Subspace iterations :       0
+</pre></div>
+</div>
+<p>Solve the basis pursuit denoise (BPDN) problem:
+.. math:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nb">min</span><span class="o">.</span> <span class="o">||</span><span class="n">x</span><span class="o">||</span><span class="n">_1</span> \<span class="n">quad</span> <span class="n">subject</span> \<span class="n">quad</span> <span class="n">to</span> \<span class="n">quad</span> <span class="o">||</span><span class="n">Ax</span> <span class="o">-</span> <span class="n">b</span><span class="o">||</span><span class="n">_2</span> <span class="o">&lt;=</span> <span class="mf">0.1</span>
+</pre></div>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">b</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">x0</span><span class="p">)</span> <span class="o">+</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.random.randn.html#numpy.random.randn" title="View documentation for numpy.random.randn"><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span></a><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.075</span>
+<span class="n">sigma</span> <span class="o">=</span> <span class="mf">0.10</span>  <span class="c1">#     % Desired ||Ax - b||_2</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">resid</span><span class="p">,</span> <span class="n">grad</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <a href="../api/generated/spgl1.spg_bpdn.html#spgl1.spg_bpdn" title="View documentation for spgl1.spg_bpdn"><span class="n">spgl1</span><span class="o">.</span><span class="n">spg_bpdn</span></a><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="n">iterations</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">verbosity</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.figure.html#matplotlib.pyplot.figure" title="View documentation for matplotlib.pyplot.figure"><span class="n">plt</span><span class="o">.</span><span class="n">figure</span></a><span class="p">()</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="s1">&#39;b&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><span class="n">x0</span><span class="p">,</span><span class="s1">&#39;ro&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.legend.html#matplotlib.pyplot.legend" title="View documentation for matplotlib.pyplot.legend"><span class="n">plt</span><span class="o">.</span><span class="n">legend</span></a><span class="p">((</span><span class="s1">&#39;Recovered coefficients&#39;</span><span class="p">,</span><span class="s1">&#39;Original coefficients&#39;</span><span class="p">))</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.title.html#matplotlib.pyplot.title" title="View documentation for matplotlib.pyplot.title"><span class="n">plt</span><span class="o">.</span><span class="n">title</span></a><span class="p">(</span><span class="s1">&#39;(b) Basis Pursuit Denoise&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<img alt="../_images/sphx_glr_spgl1_004.png" class="sphx-glr-single-img" src="../_images/sphx_glr_spgl1_004.png" />
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>================================================================================
+SPGL1
+================================================================================
+No. rows              :       50
+No. columns           :      128
+
+Initial tau           : 0.00e+00
+Two-norm of b         : 3.49e+00
+
+Optimality tol        : 1.00e-04
+Target objective      : 1.00e-01
+
+Basis pursuit tol     : 1.00e-06
+Maximum iterations    :       10
+
+iterr      Objective   Relative Gap  Rel Error      gNorm   stepG    nnzX    nnzG     tau
+
+    0  3.4876525e+00  0.0000000e+00   9.71e-01  8.998e-01     0.0       0       0  1.3130733e+01
+    1  1.5278506e+00  1.5445083e+00   9.35e-01  3.512e-01    -0.6      70       1
+    2  1.3785367e+00  1.3210423e+00   9.27e-01  3.004e-01     0.0      48       1
+    3  1.1435885e+00  1.0754951e+00   9.13e-01  2.436e-01     0.0      36       1
+    4  1.0650070e+00  1.8808347e+00   9.06e-01  3.058e-01     0.0      24       1
+    5  1.1055544e+00  1.9676460e+00   9.10e-01  2.609e-01     0.0      14       1
+    6  9.7104698e-01  5.0757852e-01   8.71e-01  1.910e-01     0.0      21       1
+    7  9.5573059e-01  2.5393233e-01   8.56e-01  1.677e-01     0.0      20       1
+    8  9.5003110e-01  1.6053048e-01   8.50e-01  1.613e-01     0.0      19       1
+    9  9.4642238e-01  6.3958437e-02   8.46e-01  1.545e-01     0.0      16       1
+
+
+ERROR EXIT -- Too many iterations
+
+
+Products with A     :       3        Total time   (secs) :     0.0
+Products with A^H   :      10        Project time (secs) :     0.0
+Newton iterations   :       1        Mat-vec time (secs) :     0.0
+Line search its     :       2        Subspace iterations :       0
+</pre></div>
+</div>
+<p>Solve the basis pursuit (BP) problem in complex variables:
+.. math:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>min. ||z||_1 \quad subject \quad to \quad  Az = b$$
+</pre></div>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">partialFourier</span><span class="p">(</span><a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.LinearOperator.html#scipy.sparse.linalg.LinearOperator" title="View documentation for scipy.sparse.linalg.LinearOperator"><span class="n">LinearOperator</span></a><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">idx</span> <span class="o">=</span> <span class="n">idx</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">),</span> <span class="n">n</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">complex128</span>
+    <span class="k">def</span> <span class="nf">_matvec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="c1"># % y = P(idx) * FFT(x)</span>
+        <span class="n">z</span> <span class="o">=</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.fft.fft.html#numpy.fft.fft" title="View documentation for numpy.fft.fft"><span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft</span></a><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">/</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.sqrt.html#numpy.sqrt" title="View documentation for numpy.sqrt"><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span></a><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">z</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+    <span class="k">def</span> <span class="nf">_rmatvec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">z</span> <span class="o">=</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.zeros.html#numpy.zeros" title="View documentation for numpy.zeros"><span class="n">np</span><span class="o">.</span><span class="n">zeros</span></a><span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+        <span class="n">z</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="k">return</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.fft.ifft.html#numpy.fft.ifft" title="View documentation for numpy.fft.ifft"><span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft</span></a><span class="p">(</span><span class="n">z</span><span class="p">)</span> <span class="o">*</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.sqrt.html#numpy.sqrt" title="View documentation for numpy.sqrt"><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span></a><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+
+
+<span class="c1"># % Create partial Fourier operator with rows idx</span>
+<span class="n">idx</span> <span class="o">=</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.random.permutation.html#numpy.random.permutation" title="View documentation for numpy.random.permutation"><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span></a><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+<span class="n">idx</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">]</span>
+<span class="n">opA</span> <span class="o">=</span> <span class="n">partialFourier</span><span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+
+<span class="c1"># % Create sparse coefficients and b = &#39;A&#39; * z0;</span>
+<span class="n">z0</span> <span class="o">=</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.zeros.html#numpy.zeros" title="View documentation for numpy.zeros"><span class="n">np</span><span class="o">.</span><span class="n">zeros</span></a><span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+<span class="n">z0</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.random.randn.html#numpy.random.randn" title="View documentation for numpy.random.randn"><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span></a><span class="p">(</span><span class="n">k</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1j</span> <span class="o">*</span> <a href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.random.randn.html#numpy.random.randn" title="View documentation for numpy.random.randn"><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span></a><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">opA</span><span class="o">.</span><span class="n">matvec</span><span class="p">(</span><span class="n">z0</span><span class="p">)</span>
+
+<span class="n">z</span><span class="p">,</span> <span class="n">resid</span><span class="p">,</span> <span class="n">grad</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <a href="../api/generated/spgl1.spg_bp.html#spgl1.spg_bp" title="View documentation for spgl1.spg_bp"><span class="n">spgl1</span><span class="o">.</span><span class="n">spg_bp</span></a><span class="p">(</span><span class="n">opA</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">verbosity</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.figure.html#matplotlib.pyplot.figure" title="View documentation for matplotlib.pyplot.figure"><span class="n">plt</span><span class="o">.</span><span class="n">figure</span></a><span class="p">()</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><span class="n">z</span><span class="o">.</span><span class="n">real</span><span class="p">,</span><span class="s1">&#39;b+&#39;</span><span class="p">,</span><span class="n">markersize</span><span class="o">=</span><span class="mf">15.0</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><span class="n">z0</span><span class="o">.</span><span class="n">real</span><span class="p">,</span><span class="s1">&#39;bo&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><span class="n">z</span><span class="o">.</span><span class="n">imag</span><span class="p">,</span><span class="s1">&#39;r+&#39;</span><span class="p">,</span><span class="n">markersize</span><span class="o">=</span><span class="mf">15.0</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot" title="View documentation for matplotlib.pyplot.plot"><span class="n">plt</span><span class="o">.</span><span class="n">plot</span></a><span class="p">(</span><span class="n">z0</span><span class="o">.</span><span class="n">imag</span><span class="p">,</span><span class="s1">&#39;ro&#39;</span><span class="p">)</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.legend.html#matplotlib.pyplot.legend" title="View documentation for matplotlib.pyplot.legend"><span class="n">plt</span><span class="o">.</span><span class="n">legend</span></a><span class="p">((</span><span class="s1">&#39;Recovered (real)&#39;</span><span class="p">,</span> <span class="s1">&#39;Original (real)&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;Recovered (imag)&#39;</span><span class="p">,</span> <span class="s1">&#39;Original (imag)&#39;</span><span class="p">))</span>
+<a href="https://matplotlib.org/api/_as_gen/matplotlib.pyplot.title.html#matplotlib.pyplot.title" title="View documentation for matplotlib.pyplot.title"><span class="n">plt</span><span class="o">.</span><span class="n">title</span></a><span class="p">(</span><span class="s1">&#39;(c) Complex Basis Pursuit&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<img alt="../_images/sphx_glr_spgl1_005.png" class="sphx-glr-single-img" src="../_images/sphx_glr_spgl1_005.png" />
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>================================================================================
+SPGL1
+================================================================================
+No. rows              :       50
+No. columns           :      128
+
+Initial tau           : 0.00e+00
+Two-norm of b         : 3.23e+00
+
+Optimality tol        : 1.00e-04
+Target objective      : 0.00e+00
+
+Basis pursuit tol     : 1.00e-06
+Maximum iterations    :      500
+
+iterr      Objective   Relative Gap  Rel Error      gNorm   stepG    nnzX    nnzG     tau
+
+    0  3.2278608e+00  0.0000000e+00   1.00e+00  9.900e-01     0.0       0       0  1.0524266e+01
+    1  1.7448418e+00  1.9165918e+00   1.00e+00  5.168e-01    -0.6      95       0
+    2  1.4600574e+00  1.5883031e+00   1.00e+00  3.875e-01     0.0      57       0
+    3  1.1700012e+00  7.2057823e-01   1.00e+00  2.294e-01     0.0      21       0
+    4  1.1387081e+00  6.0492162e-01   1.00e+00  2.591e-01     0.0      14       0
+    5  1.1192644e+00  6.3143375e-01   1.00e+00  2.339e-01     0.0      13       0
+    6  1.1110267e+00  2.5990247e-02   1.00e+00  1.887e-01     0.0      14       1
+    7  1.1109277e+00  1.8665102e-02   1.00e+00  1.882e-01     0.0      14       1
+    8  1.1109130e+00  9.8075648e-03   1.00e+00  1.876e-01     0.0      14       1  1.7103189e+01
+    9  4.0897300e-01  2.0290430e+00   4.09e-01  1.096e-01     0.0      33       0
+   10  2.4260476e-01  3.0388666e-01   2.43e-01  5.139e-02     0.0      84       0
+   20  7.3650716e-02  1.5598522e-01   7.37e-02  1.898e-02    -0.6      36       0
+   30  3.9788017e-02  1.6542005e-03   3.98e-02  6.363e-03     0.0      15       6
+   32  3.9782650e-02  1.1422408e-03   3.98e-02  6.356e-03     0.0      14       6  1.7352196e+01
+   40  5.2988817e-03  2.3780252e-03   5.30e-03  8.349e-04     0.0      45      37
+   50  1.0390584e-03  8.2222317e-04   1.04e-03  1.846e-04     0.0      14      14
+   60  4.3109474e-04  2.4525356e-04   4.31e-04  8.092e-05     0.0      14      14
+   65  4.2277718e-04  2.9841817e-06   4.23e-04  6.689e-05     0.0      14      14  1.7354868e+01
+   68  6.8723628e-05  5.4983718e-05   6.87e-05  1.067e-05     0.0      14      14
+
+
+EXIT -- Found a root
+
+
+Products with A     :      17        Total time   (secs) :     0.0
+Products with A^H   :      69        Project time (secs) :     0.0
+Newton iterations   :       4        Mat-vec time (secs) :     0.0
+Line search its     :      16        Subspace iterations :       0
+</pre></div>
+</div>
+<p><strong>Total running time of the script:</strong> ( 0 minutes  0.868 seconds)</p>
+<div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-tutorials-spgl1-py">
+<div class="sphx-glr-download docutils container">
+<a class="reference download internal" download="" href="../_downloads/d40f7528ed779f6abe6d1b072a67a7dd/spgl1.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">spgl1.py</span></code></a></div>
+<div class="sphx-glr-download docutils container">
+<a class="reference download internal" download="" href="../_downloads/6a1bd5b261c3dccc9b64692113076ca0/spgl1.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">spgl1.ipynb</span></code></a></div>
+</div>
+<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.readthedocs.io">Gallery generated by Sphinx-Gallery</a></p>
+</div>
+
+
+           </div>
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="../credits.html" class="btn btn-neutral float-right" title="Contributors" accesskey="n">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="index.html" class="btn btn-neutral" title="Tutorials" accesskey="p"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2019.
+      Last updated on May 06, 2019.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'../',
+            VERSION:'',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true
+        };
+    </script>
+      <script type="text/javascript" src="../_static/jquery.js"></script>
+      <script type="text/javascript" src="../_static/underscore.js"></script>
+      <script type="text/javascript" src="../_static/doctools.js"></script>
+      <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+  
+
+  
+  
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+  
+
+  
+  
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.StickyNav.enable();
+      });
+  </script>
+   
+
+</body>
+</html>
