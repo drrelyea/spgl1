@@ -268,7 +268,7 @@ def oneprojector(b, d=1, tau=None):
         Projected vector
 
     """
-    if not np.isscalar(d) and np.size(b) != np.size(d):
+    if not np.isscalar(d) and b.size != d.size:
         raise ValueError('vectors b and d must have the same length')
 
     if np.isscalar(d) and d == 0:
@@ -826,8 +826,8 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
             if subspaceMin:
                 g = - A.rmatvec(r)
                 nProdAt += 1
-                nnzX,nnzG, nnzIdx, nnzDiff = _active_vars(x, g, nnzOld, optTol,
-                                                          weights, dual_norm)
+                nnzX, nnzG, nnzIdx, nnzDiff = _active_vars(x, g, nnzOld, optTol,
+                                                           weights, dual_norm)
                 if not nnzDiff:
                     if nnzX == nnzG:
                         itnMaxLSQR = 20
@@ -835,18 +835,16 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
                         itnMaxLSQR = 5
                     nnzIdx = np.abs(x) >= optTol
 
-                    #% LSQR parameters
-                    damp       = 1e-5
-                    aTol       = 1e-1
-                    bTol       = 1e-1
-                    conLim     = 1e12
-                    showLSQR   = 0.
+                    # LSQR parameters
+                    damp = 1e-5
+                    aTol = 1e-1
+                    bTol = 1e-1
+                    conLim = 1e12
+                    showLSQR = 0
 
                     ebar = np.sign(x[nnzIdx])
                     nebar = np.size(ebar)
                     Sprod = _LSQRprod(A, nnzIdx, ebar, n)
-                    Sprod*np.ones(nebar)
-                    Sprod.H*np.ones(m)
 
                     dxbar, istop, itnLSQR = \
                        lsqr(Sprod, r, damp, aTol, bTol, conLim,
@@ -857,7 +855,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
 
                     # LSQR iterations successful. Take the subspace step.
                     if istop != 4:
-                        # Push dx back into full space:  dx = Z dx.
+                        # Push dx back into full space: dx = Z dx.
                         dx = np.zeros(n)
                         dx[nnzIdx] = \
                             dxbar - (1/nebar)*np.dot(np.dot(np.conj(ebar.T),
@@ -873,10 +871,11 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
                         if np.any(block2):
                             alpha2 = min(-x[block2] / dx[block2])
                         alpha = min([1,alpha1,alpha2])
-                        if alpha<0:
+                        if alpha < 0:
                             raise ValueError('Alpha smaller than zero')
                         if np.dot(np.conj(ebar.T), dx[nnzIdx]) > optTol:
-                            raise ValueError('NEED TO WRITE SOMETHING USEFUL')
+                            raise ValueError('Subspace update signed sum '
+                                             'bigger than tolerance')
                         # Update variables.
                         x = x + alpha*dx
                         r = b - A.matvec(x)
@@ -955,7 +954,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
 
     # Print final output.
     if verbosity >= 1:
-        _printf(fid, '\n')
+        _printf(fid, '')
         if stat == EXIT_OPTIMAL:
             _printf(fid, 'EXIT -- Optimal solution found')
         elif stat == EXIT_ITERATIONS:
@@ -976,7 +975,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None,
             _printf(fid, 'EXIT -- Found a possible active set')
         else:
             _printf(fid, 'SPGL1 ERROR: Unknown termination condition')
-        _printf(fid, '\n')
+        _printf(fid, '')
 
         _printf(fid, '%-20s:  %6i %6s %-20s:  %6.1f' %
                 ('Products with A', nProdA,'','Total time   (secs)',info['timeTotal']))
@@ -1127,7 +1126,6 @@ def spg_bpdn(A, b, sigma, **kwargs):
 def spg_lasso(A, b, tau, **kwargs):
     """LASSO problem
 
-
     ``spg_lasso`` is designed to solve the Lasso problem::
 
         (LASSO)  minimize  ||Ax - b||_2  subject to  ||x||_1 <= tau
@@ -1191,6 +1189,66 @@ def spg_lasso(A, b, tau, **kwargs):
 
 
 def spg_mmv(A, B, sigma=0, **kwargs):
+    """MMV problem
+
+    ``spg_mmv`` is designed to solve the  multi-measurement vector
+    basis pursuit denoise::
+
+        (MMV)  minimize  ||X||_1,2  subject to  ||A X - B||_2,2 <= sigma
+
+    where ``A`` is an M-by-N matrix, ``b`` is an M-by-G matrix, and ```sigma``
+    is a nonnegative scalar. ``A`` can be an explicit M-by-N matrix or a
+    :class:`scipy.sparse.linalg.LinearOperator`.
+
+    Parameters
+    ----------
+    A : {sparse matrix, ndarray, LinearOperator}
+        Representation of an M-by-N  matrix.  It is required that
+        the linear operator can produce ``Ax`` and ``A^T x``.
+    b : array_like, shape (m,)
+        Right-hand side matrix ``b`` of size M-by-G.
+    sigma : float, optional
+        BPDN threshold. If different from ``None``, spgl1 solves BPDN problem
+    kwargs : dict, optional
+        Additional input parameters (refer to :func:`spgl1.spgl1` for a list
+        of possible parameters)
+
+    Returns
+    -------
+    x : array_like, shape (n,)
+        Inverted model
+    r : array_like, shape (m,)
+        Final residual
+    g : array_like, shape (h,)
+        Final gradient
+    info : dict
+        Dictionary with the following information:
+
+        ``.tau``, final value of tau (see sigma above)
+
+        ``.rNorm``, two-norm of the optimal residual
+
+        ``.rGap``, relative duality gap (an optimality measure)
+
+        ``.gNorm``, Lagrange multiplier of (LASSO)
+
+        ``.stat``,
+           ``1``: found a BPDN solution,
+           ``2``: found a BP solution; exit based on small gradient,
+           ``3``: found a BP solution; exit based on small residual,
+           ``4: found a LASSO solution,
+           ``5``: error: too many iterations,
+           ``6``: error: linesearch failed,
+           ``7``: error: found suboptimal BP solution,
+           ``8``: error: too many matrix-vector products
+
+        ``.time``, total solution time (seconds)
+
+        ``.nProdA``, number of multiplications with A
+
+        ``.nProdAt``, number of multiplications with A'
+
+    """
     A = aslinearoperator(A)
     m, n = A.shape
     groups = B.shape[1]

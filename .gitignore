@@ -18,3 +18,8 @@ TODO
 
 # Eggs
 spgl1.egg-info/
+
+# Docs
+docs/build/
+docs/source/api/generated
+docs/source/tutorials
