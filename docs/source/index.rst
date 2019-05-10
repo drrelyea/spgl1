@@ -50,7 +50,6 @@ where better implementation choices for the Python programming language were ide
 
    Installation <installation.rst>
    Reference documentation <api/index.rst>
-   tutorials/index.rst
    Credits <credits.rst>
 
 

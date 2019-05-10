@@ -145,7 +145,7 @@ tau[0] = 1e-10
 phi = np.zeros(tau.size)
 
 for i in range(tau.size):
-    x,r,grad,info = spgl1.spgl1(A,b,tau[i],0,x, iterations=1000)
+    x,r,grad,info = spgl1.spgl1(A, b, tau[i], 0, x, iter_lim=1000)
     phi[i] = np.linalg.norm(r)
 
 plt.figure()
