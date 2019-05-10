@@ -57,15 +57,15 @@ plt.legend(('Recovered coefficients','Original coefficients'))
 plt.title('(a) Basis Pursuit')
 
 plt.figure()
-plt.plot(info['xNorm1'], info['rNorm2'], '.-k')
+plt.plot(info['xnorm1'], info['rnorm2'], '.-k')
 plt.xlabel(r'$||x||_1$')
 plt.ylabel(r'$||r||_2$')
 plt.title('Pareto curve')
 
 plt.figure()
-plt.plot(np.arange(info['iterr']), info['rNorm2']/max(info['rNorm2']),
+plt.plot(np.arange(info['niters']), info['rnorm2']/max(info['rnorm2']),
          '.-k', label=r'$||r||_2$')
-plt.plot(np.arange(info['iterr']), info['xNorm1']/max(info['xNorm1']),
+plt.plot(np.arange(info['niters']), info['xnorm1']/max(info['xnorm1']),
          '.-r', label=r'$||x||_1$')
 plt.xlabel(r'#iter')
 plt.ylabel(r'$||r||_2/||x||_1$')
@@ -81,7 +81,7 @@ plt.legend()
 
 b = A.dot(x0) + np.random.randn(m) * 0.075
 sigma = 0.10  # Desired ||Ax - b||_2
-x, resid, grad, info = spgl1.spg_bpdn(A, b, sigma, iterations=100, verbosity=2)
+x, resid, grad, info = spgl1.spg_bpdn(A, b, sigma, iter_lim=100, verbosity=2)
 
 plt.figure()
 plt.plot(x,'b')
@@ -177,7 +177,7 @@ w = np.random.rand(n) + 0.1 # Weights
 b = A.dot(x0 / w)  # Signal
 
 # Solve
-x, resid, grad, info = spgl1.spg_bp(A, b, **dict(iterations=1000, weights=w))
+x, resid, grad, info = spgl1.spg_bp(A, b, iter_lim=1000, weights=w)
 
 # Reconstructed solution, with weighting
 x1 = x * w
@@ -221,10 +221,10 @@ W = 1/weights * np.eye(n)
 B = A.dot(W).dot(X0)
 
 # Solve unweighted version
-x_uw, _, _, _ = spgl1.spg_mmv(A.dot(W), B, 0, **dict(verbosity=1))
+x_uw, _, _, _ = spgl1.spg_mmv(A.dot(W), B, 0, verbosity=1)
 
 # Solve weighted version
-x_w, _, _, _ = spgl1.spg_mmv(A, B, 0, **dict(verbosity=2, weights=weights))
+x_w, _, _, _ = spgl1.spg_mmv(A, B, 0, weights=weights, verbosity=2)
 x_w = spdiags(weights, 0, n, n).dot(x_w)
 
 # Plot results

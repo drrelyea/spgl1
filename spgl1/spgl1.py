@@ -102,7 +102,7 @@ def _oneprojector_i(b, tau):
     elif tau < np.spacing(1):
         pass
     else:
-        idx = np.argsort(b, kind='stable')[::-1]
+        idx = np.argsort(b)[::-1]
         b = b[idx]
 
         csb = np.cumsum(b) - tau
@@ -128,7 +128,7 @@ def _oneprojector_d(b, d, tau):
         pass
     else:
         # Preprocessing
-        idx = np.argsort(b / d, kind='stable')[::-1]
+        idx = np.argsort(b / d)[::-1]
         b = b[idx]
         d = d[idx]
 

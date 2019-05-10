@@ -19,7 +19,7 @@ It is designed to solve any of the following three problems:
    ``minimize  ||Ax - b||_2  subject to  ||x||_1 <= tau``,
 
 The matrix ``A`` can be defined explicitly, or as an operator
-that returns both both ``Ax`` and ``A'y``.
+that returns both both ``Ax`` and ``A'b``.
 
 SPGL1 can solve these three problems in both the real and complex domains.
 

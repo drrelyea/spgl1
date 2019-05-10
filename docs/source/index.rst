@@ -22,7 +22,7 @@ It is designed to solve any of the following three problems:
 
 The matrix :math:`\mathbf{A}` can be defined explicitly, or as a
 :class:`scipy.sparse.linalg.LinearOperator` that returns both both :math:`\mathbf{Ax}` and
-:math:`\mathbf{A}^H\mathbf{x}`.
+:math:`\mathbf{A}^H\mathbf{b}`.
 
 SPGL1 can solve these three problems in both the real and complex domains.
 

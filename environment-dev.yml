@@ -10,5 +10,12 @@ dependencies:
   - ipython
   - jupyter
   - pytest
+  - Sphinx
+  - numpydoc
   - pip:
     - pytest-runner
+    - setuptools_scm
+    - sphinx-rtd-theme
+    - sphinx-gallery
+    - nbsphinx
+    - image

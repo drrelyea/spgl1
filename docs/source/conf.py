@@ -85,7 +85,7 @@ project = 'SPGL1'
 copyright = '{}'.format(year)
 
 # Version
-version = get_distribution('pylops').version
+version = get_distribution('spgl1').version
 if len(version.split('+')) > 1 or version == 'unknown':
     version = 'dev'
 
