@@ -19,11 +19,11 @@ par3 = {'n': 50, 'm': 100, 'k': 14,
 
 # sparse matrix
 par1_sp = {'n': 50, 'm': 50, 'k': 14,
-           'sparse': False} # square
+           'sparse': True} # square
 par2_sp = {'n': 128, 'm': 50, 'k': 14,
-           'sparse': False} # underdetermined
+           'sparse': True} # underdetermined
 par3_sp = {'n': 50, 'm': 100, 'k': 14,
-           'sparse': False} # overdetermined
+           'sparse': True} # overdetermined
 
 np.random.seed(1)
 
@@ -55,8 +55,12 @@ def test_lasso(par):
     # Set up vector b, and run solver
     b = A.dot(x)
     tau = np.pi
-    xinv, resid, _, _ = spg_lasso(A, b, tau)
 
+    xinv, resid, _, _ = spg_lasso(A, b, tau, verbosity=2)
+    assert np.linalg.norm(xinv, 1) - np.pi < 1e-10
+
+    # Run solver with subspace minimization
+    xinv, resid, _, _ = spg_lasso(A, b, tau, subspace_min=True, verbosity=2)
     assert np.linalg.norm(xinv, 1) - np.pi < 1e-10
 
 
@@ -85,8 +89,11 @@ def test_bp(par):
 
     # Set up vector b, and run solver
     b = A.dot(x)
-    xinv, _, _, _ = spg_bp(A, b)
+    xinv, _, _, _ = spg_bp(A, b, verbosity=2)
+    assert_array_almost_equal(x, xinv, decimal=3)
 
+    # Run solver with subspace minimization
+    xinv, _, _, _ = spg_bp(A, b, subspace_min=True, verbosity=2)
     assert_array_almost_equal(x, xinv, decimal=3)
 
 
@@ -116,9 +123,11 @@ def test_bpdn(par):
     # Set up vector b, and run solver
     b = A.dot(x) + np.random.randn(n) * 0.075
     sigma = 0.10
-    xinv, resid, _, _ = spg_bpdn(A, b, sigma, iterations=1000)
-    print(np.linalg.norm(resid))
+    xinv, resid, _, _ = spg_bpdn(A, b, sigma, iter_lim=1000, verbosity=2)
+    assert np.linalg.norm(resid) < sigma*1.1 # need to check why resid is slighly bigger than sigma
 
+    # Run solver with subspace minimization
+    xinv, _, _, _ = spg_bpdn(A, b, sigma, subspace_min=True, verbosity=2)
     assert np.linalg.norm(resid) < sigma*1.1 # need to check why resid is slighly bigger than sigma
 
 
@@ -147,8 +156,11 @@ def test_bp_complex(par):
 
     # Set up vector b, and run solver
     b = A.dot(x)
-    xinv, _, _, _ = spg_bp(A, b)
+    xinv, _, _, _ = spg_bp(A, b, verbosity=2)
+    assert_array_almost_equal(x, xinv, decimal=3)
 
+    # Run solver with subspace minimization
+    xinv, _, _, _ = spg_bp(A, b, subspace_min=True, verbosity=2)
     assert_array_almost_equal(x, xinv, decimal=3)
 
 
@@ -180,10 +192,9 @@ def test_weighted_bp(par):
     x[p] = np.random.randn(k)
 
     # Set up weights w and vector b
-    w = 0.1*np.random.rand(m) + 0.1  # Weights
+    w = 0.1*np.random.rand(m) + 0.1 # Weights
     b = A.dot(x / w)  # Signal
-
-    xinv, _, _, _ = spg_bp(A, b, iterations=1000, weights=w)
+    xinv, _, _, _ = spg_bp(A, b, iter_lim=1000, weights=w, verbosity=2)
 
     # Reconstructed solution, with weighting
     xinv *= w
@@ -215,10 +226,10 @@ def test_multiple_measurements(par):
     B = A.dot(W).dot(X)
 
     # Solve unweighted version
-    X_uw, _, _, _ = spg_mmv(A.dot(W), B, 0, **dict(verbosity=1))
+    X_uw, _, _, _ = spg_mmv(A.dot(W), B, 0, verbosity=2)
 
     # Solve weighted version
-    X_w, _, _, _ = spg_mmv(A, B, 0, **dict(verbosity=1, weights=weights))
+    X_w, _, _, _ = spg_mmv(A, B, 0, weights=weights, verbosity=2)
     X_w = spdiags(weights, 0, n, n).dot(X_w)
 
     assert_array_almost_equal(X, X_uw, decimal=2)

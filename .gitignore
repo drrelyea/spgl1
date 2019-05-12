@@ -13,8 +13,16 @@ static/*
 db.sqlite3
 TODO
 
+# Versioning
+spgl1/version.py
+
 # Notebooks
 .ipynb_checkpoints/
 
 # Eggs
 spgl1.egg-info/
+
+# Docs
+docs/build/
+docs/source/api/generated
+docs/source/tutorials
