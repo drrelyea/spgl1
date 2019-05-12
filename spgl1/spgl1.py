@@ -201,7 +201,8 @@ def oneprojector(b, d, tau):
             x = b.copy()
             x[idx] = _oneprojector_di(b[idx], d[idx], tau)
         # Restore signs in x
-        x *= s
+        x *= s.astype(x.dtype)
+
     return x
 
 def _norm_l1_primal(x, weights):
@@ -711,29 +712,45 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
     info : dict
         Dictionary with the following information:
 
-        ``.tau``, final value of tau (see sigma above)
+        ``tau``, final value of tau (see sigma above)
 
-        ``.rnorm``, two-norm of the optimal residual
+        ``rnorm``, two-norm of the optimal residual
 
-        ``.rgap``, relative duality gap (an optimality measure)
+        ``rgap``, relative duality gap (an optimality measure)
 
-        ``.gnorm``, Lagrange multiplier of (LASSO)
+        ``gnorm``, Lagrange multiplier of (LASSO)
 
-        ``.stat``,
+        ``stat``,
            ``1``: found a BPDN solution,
            ``2``: found a BP solution; exit based on small gradient,
            ``3``: found a BP solution; exit based on small residual,
-           ``4: found a LASSO solution,
+           ``4``: found a LASSO solution,
            ``5``: error: too many iterations,
            ``6``: error: linesearch failed,
            ``7``: error: found suboptimal BP solution,
            ``8``: error: too many matrix-vector products
 
-        ``.time``, total solution time (seconds)
+        ``niters``, number of iterations
 
-        ``.nProdA``, number of multiplications with A
+        ``nProdA``, number of multiplications with A
 
-        ``.nProdAt``, number of multiplications with A'
+        ``nProdAt``, number of multiplications with A'
+
+        ``n_newton``, number of Newton steps
+
+        ``time_project``, projection time (seconds)
+
+        ``time_matprod``, matrix-vector multiplications time (seconds)
+
+        ``time_total``, total solution time (seconds)
+
+        ``niters_lsqr``, number of lsqr iterations (if ``subspace_min=True``)
+
+        ``xnorm1``, L1-norm model solution history through iterations
+
+        ``rnorm2``, L2-norm residual history through iterations
+
+        ``lambdaa``, Lagrange multiplier history through iterations
 
     References
     ----------
@@ -788,7 +805,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
     else:
         x = np.asarray(x0)
 
-    #% Override realx when iscomplex flag is set
+    # Override realx when iscomplex flag is set
     if iscomplex:
         realx = False
 
@@ -806,13 +823,13 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
 
     # Quick exit if sigma >= ||b||.  Set tau = 0 to short-circuit the loop.
     if bnorm <= sigma:
-        print('W: sigma >= ||b||.  Exact solution is x = 0.')
+        logger.warning('W: sigma >= ||b||.  Exact solution is x = 0.')
         tau = 0
         single_tau = True
 
     # Do not do subspace minimization if x is complex.
     if not realx and subspace_min:
-        print('W: Subspace minimization disabled when variables are complex.')
+        logger.warning('W: Subspace minimization disabled when variables are complex.')
         subspace_min = False
 
     #% Pre-allocate iteration info vectors
@@ -1249,32 +1266,7 @@ def spg_bp(A, b, **kwargs):
     g : array_like, shape (h,)
         Final gradient
     info : dict
-        Dictionary with the following information:
-
-        ``.tau``, final value of tau (see sigma above)
-
-        ``.rNorm``, two-norm of the optimal residual
-
-        ``.rGap``, relative duality gap (an optimality measure)
-
-        ``.gNorm``, Lagrange multiplier of (LASSO)
-
-        ``.stat``,
-           ``1``: found a BPDN solution,
-           ``2``: found a BP solution; exit based on small gradient,
-           ``3``: found a BP solution; exit based on small residual,
-           ``4: found a LASSO solution,
-           ``5``: error: too many iterations,
-           ``6``: error: linesearch failed,
-           ``7``: error: found suboptimal BP solution,
-           ``8``: error: too many matrix-vector products
-
-        ``.time``, total solution time (seconds)
-
-        ``.nProdA``, number of multiplications with ``A``
-
-        ``.nProdAt``, number of multiplications with ``A'``
-
+        See splg1.
     """
     sigma = 0
     tau = 0
@@ -1316,31 +1308,7 @@ def spg_bpdn(A, b, sigma, **kwargs):
     g : array_like, shape (h,)
         Final gradient
     info : dict
-        Dictionary with the following information:
-
-        ``.tau``, final value of tau (see sigma above)
-
-        ``.rNorm``, two-norm of the optimal residual
-
-        ``.rGap``, relative duality gap (an optimality measure)
-
-        ``.gNorm``, Lagrange multiplier of (LASSO)
-
-        ``.stat``,
-           ``1``: found a BPDN solution,
-           ``2``: found a BP solution; exit based on small gradient,
-           ``3``: found a BP solution; exit based on small residual,
-           ``4: found a LASSO solution,
-           ``5``: error: too many iterations,
-           ``6``: error: linesearch failed,
-           ``7``: error: found suboptimal BP solution,
-           ``8``: error: too many matrix-vector products
-
-        ``.time``, total solution time (seconds)
-
-        ``.nProdA``, number of multiplications with A
-
-        ``.nProdAt``, number of multiplications with A'
+        See spgl1.
 
     """
     tau = 0
@@ -1381,31 +1349,7 @@ def spg_lasso(A, b, tau, **kwargs):
     g : array_like, shape (h,)
         Final gradient
     info : dict
-        Dictionary with the following information:
-
-        ``.tau``, final value of tau (see sigma above)
-
-        ``.rNorm``, two-norm of the optimal residual
-
-        ``.rGap``, relative duality gap (an optimality measure)
-
-        ``.gNorm``, Lagrange multiplier of (LASSO)
-
-        ``.stat``,
-           ``1``: found a BPDN solution,
-           ``2``: found a BP solution; exit based on small gradient,
-           ``3``: found a BP solution; exit based on small residual,
-           ``4: found a LASSO solution,
-           ``5``: error: too many iterations,
-           ``6``: error: linesearch failed,
-           ``7``: error: found suboptimal BP solution,
-           ``8``: error: too many matrix-vector products
-
-        ``.time``, total solution time (seconds)
-
-        ``.nProdA``, number of multiplications with A
-
-        ``.nProdAt``, number of multiplications with A'
+        See spgl1.
 
     """
     sigma = 0
@@ -1447,31 +1391,7 @@ def spg_mmv(A, B, sigma=0, **kwargs):
     g : array_like, shape (h,)
         Final gradient
     info : dict
-        Dictionary with the following information:
-
-        ``.tau``, final value of tau (see sigma above)
-
-        ``.rNorm``, two-norm of the optimal residual
-
-        ``.rGap``, relative duality gap (an optimality measure)
-
-        ``.gNorm``, Lagrange multiplier of (LASSO)
-
-        ``.stat``,
-           ``1``: found a BPDN solution,
-           ``2``: found a BP solution; exit based on small gradient,
-           ``3``: found a BP solution; exit based on small residual,
-           ``4: found a LASSO solution,
-           ``5``: error: too many iterations,
-           ``6``: error: linesearch failed,
-           ``7``: error: found suboptimal BP solution,
-           ``8``: error: too many matrix-vector products
-
-        ``.time``, total solution time (seconds)
-
-        ``.nProdA``, number of multiplications with A
-
-        ``.nProdAt``, number of multiplications with A'
+        See spgl1.
 
     """
     A = aslinearoperator(A)

@@ -121,7 +121,7 @@ z0 = np.zeros(n, dtype=complex)
 z0[p] = np.random.randn(k) + 1j * np.random.randn(k)
 b = opA.matvec(z0)
 
-# Solve
+# Solve problem
 z, resid, grad, info = spgl1.spg_bp(opA, b, verbosity=2)
 
 plt.figure()
@@ -177,7 +177,7 @@ x0[p[0:k]] = np.random.randn(k)
 w = np.random.rand(n) + 0.1 # Weights
 b = A.dot(x0 / w)  # Signal
 
-# Solve
+# Solve problem
 x, resid, grad, info = spgl1.spg_bp(A, b, iter_lim=1000, weights=w)
 
 # Reconstructed solution, with weighting
