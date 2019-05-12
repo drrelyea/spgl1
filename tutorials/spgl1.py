@@ -19,9 +19,9 @@ np.random.seed(43273289)
 m = 50
 n = 128
 k = 14
-[A,Rtmp] = np.linalg.qr(np.random.randn(n,m),'reduced')
-A  = A.T
-p  = np.random.permutation(n)
+[A, Rtmp] = np.linalg.qr(np.random.randn(n, m), 'reduced')
+A = A.T
+p = np.random.permutation(n)
 p = p[0:k]
 x0 = np.zeros(n)
 x0[p] = np.random.randn(k)
@@ -36,9 +36,10 @@ b = A.dot(x0)
 tau = np.pi
 x, resid, grad, info = spgl1.spg_lasso(A, b, tau, verbosity=1)
 
-print('%s%s%s' % ('-'*35,' Solution ','-'*35))
+print('%s%s%s' % ('-'*35, ' Solution ', '-'*35))
 print('nonzeros(x) = %i,   ||x||_1 = %12.6e,   ||x||_1 - pi = %13.6e' %
-      (np.sum(abs(x)>1e-5), np.linalg.norm(x,1), np.linalg.norm(x,1)-np.pi))
+      (np.sum(np.abs(x) > 1e-5), np.linalg.norm(x, 1),
+       np.linalg.norm(x, 1)-np.pi))
 print('%s' % ('-'*80))
 
 ###############################################################################
@@ -48,13 +49,13 @@ print('%s' % ('-'*80))
 #     min.  ||\mathbf{x}||_1 \quad subject \quad  to \quad
 #     \mathbf{Ax} = \mathbf{b}
 b = A.dot(x0)
-x,resid,grad,info = spgl1.spg_bp(A, b, verbosity=2)
+x, resid, grad, info = spgl1.spg_bp(A, b, verbosity=2)
 
 plt.figure()
-plt.plot(x,'b')
-plt.plot(x0,'ro')
-plt.legend(('Recovered coefficients','Original coefficients'))
-plt.title('(a) Basis Pursuit')
+plt.plot(x, 'b')
+plt.plot(x0, 'ro')
+plt.legend(('Recovered coefficients', 'Original coefficients'))
+plt.title('Basis Pursuit')
 
 plt.figure()
 plt.plot(info['xnorm1'], info['rnorm2'], '.-k')
@@ -84,10 +85,10 @@ sigma = 0.10  # Desired ||Ax - b||_2
 x, resid, grad, info = spgl1.spg_bpdn(A, b, sigma, iter_lim=100, verbosity=2)
 
 plt.figure()
-plt.plot(x,'b')
-plt.plot(x0,'ro')
-plt.legend(('Recovered coefficients','Original coefficients'))
-plt.title('(b) Basis Pursuit Denoise')
+plt.plot(x, 'b')
+plt.plot(x0, 'ro')
+plt.legend(('Recovered coefficients', 'Original coefficients'))
+plt.title('Basis Pursuit Denoise')
 
 ###############################################################################
 # Solve the basis pursuit (BP) problem in complex variables:
@@ -106,7 +107,7 @@ class partialFourier(LinearOperator):
         z = np.fft.fft(x) / np.sqrt(n)
         return z[idx]
     def _rmatvec(self, x):
-        z = np.zeros(n,dtype=complex)
+        z = np.zeros(n, dtype=complex)
         z[idx] = x
         return np.fft.ifft(z) * np.sqrt(n)
 
@@ -116,7 +117,7 @@ idx = idx[0:m]
 opA = partialFourier(idx, n)
 
 # Create sparse coefficients and b = A * z0
-z0 = np.zeros(n,dtype=complex)
+z0 = np.zeros(n, dtype=complex)
 z0[p] = np.random.randn(k) + 1j * np.random.randn(k)
 b = opA.matvec(z0)
 
@@ -124,13 +125,13 @@ b = opA.matvec(z0)
 z, resid, grad, info = spgl1.spg_bp(opA, b, verbosity=2)
 
 plt.figure()
-plt.plot(z.real,'b+',markersize=15.0)
-plt.plot(z0.real,'bo')
-plt.plot(z.imag,'r+',markersize=15.0)
-plt.plot(z0.imag,'ro')
+plt.plot(z.real, 'b+', markersize=15.0)
+plt.plot(z0.real, 'bo')
+plt.plot(z.imag, 'r+', markersize=15.0)
+plt.plot(z0.imag, 'ro')
 plt.legend(('Recovered (real)', 'Original (real)',
             'Recovered (imag)', 'Original (imag)'))
-plt.title('(c) Complex Basis Pursuit')
+plt.title('Complex Basis Pursuit')
 
 ###############################################################################
 # We can also sample the Pareto frontier at 100 points:
@@ -145,12 +146,12 @@ tau[0] = 1e-10
 phi = np.zeros(tau.size)
 
 for i in range(tau.size):
-    x,r,grad,info = spgl1.spgl1(A, b, tau[i], 0, x, iter_lim=1000)
+    x, r, grad, info = spgl1.spgl1(A, b, tau[i], 0, x, iter_lim=1000)
     phi[i] = np.linalg.norm(r)
 
 plt.figure()
-plt.plot(tau,phi, '.')
-plt.title('(d) Pareto frontier')
+plt.plot(tau, phi, '.')
+plt.title('Pareto frontier')
 plt.xlabel('||x||_1')
 plt.ylabel('||Ax-b||_2')
 
@@ -185,8 +186,8 @@ x1 = x * w
 plt.figure()
 plt.plot(x1, 'b')
 plt.plot(x0, 'ro')
-plt.legend(('Coefficients (1)', 'Original coefficients'))
-plt.title('(e) Weighted Basis Pursuit')
+plt.legend(('Coefficients', 'Original coefficients'))
+plt.title('Weighted Basis Pursuit')
 k = 9
 x0 = np.zeros(n)
 x0[p[0:k]] = np.random.randn(k)
@@ -233,11 +234,11 @@ plt.plot(x_uw[:, 0], 'b-', label='Coefficients (1)')
 plt.plot(x_w[:, 0], 'b.', label='Coefficients (2)')
 plt.plot(X0[:, 0], 'ro', label='Original coefficients')
 plt.legend()
-plt.title('(f) Weighted Basis Pursuit with Multiple Measurement Vectors')
+plt.title('Weighted Basis Pursuit with Multiple Measurement Vectors')
 
 plt.figure()
 plt.plot(x_uw[:, 1], 'b-', label='Coefficients (1)')
 plt.plot(x_w[:, 1], 'b.', label='Coefficients (2)')
 plt.plot(X0[:, 1], 'ro', label='Original coefficients')
 plt.legend()
-plt.title('(f) Weighted Basis Pursuit with Multiple Measurement Vectors')
+plt.title('Weighted Basis Pursuit with Multiple Measurement Vectors')

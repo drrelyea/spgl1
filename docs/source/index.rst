@@ -41,8 +41,8 @@ The algorithm implemented by SPGL1 is described in these two papers:
 History
 -------
 SPGL1 has been initially implemented in `MATLAB <https://www.cs.ubc.ca/~mpf/spgl1/>`_ by E. van den Berg and M. P. Friedlander.
-This project is a direct port of their algorithm in Python, small modifications are however implemented in some areas of the code
-where better implementation choices for the Python programming language were identified.
+This project is aimed at porting of their algorithm in Python. Small modifications are implemented in some areas of the code
+where more appropriate implementation choices were identified for the Python programming language.
 
 .. toctree::
    :maxdepth: 2
