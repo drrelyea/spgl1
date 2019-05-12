@@ -62,6 +62,10 @@ make dev-install_conda
 Examples can be found in the ``examples`` folder in the form of
 jupyter notebooks.
 
+## Documentation
+The official documentation is built with Sphinx and hosted on
+[readthedocs](https://spgl1.readthedocs.io/en/latest/).
+
 
 ## References
 
