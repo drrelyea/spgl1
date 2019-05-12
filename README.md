@@ -1,5 +1,7 @@
 # SPGL1: Spectral Projected Gradient for L1 minimization
 [![Build Status](https://travis-ci.org/drrelyea/SPGL1_python_port.svg?branch=master)](https://travis-ci.org/drrelyea/SPGL1_python_port)
+[![PyPI version](https://badge.fury.io/py/spgl1.svg)](https://badge.fury.io/py/spgl1)
+[![Documentation Status](https://readthedocs.org/projects/spgl1/badge/?version=latest)](https://spgl1.readthedocs.io/en/latest/?badge=latest)
 
 Original home page: http://www.cs.ubc.ca/labs/scl/spgl1/
 
@@ -24,7 +26,20 @@ that returns both both ``Ax`` and ``A'b``.
 SPGL1 can solve these three problems in both the real and complex domains.
 
 ## Installation
-To install ``spgl1`` within your current environment, type:
+
+#### From PyPi
+
+If you want to use ``spgl1`` within your codes, install it in your
+Python environment by typing the following command in your terminal:
+
+```
+pip install spgl1
+```
+
+#### From Source
+
+First of all clone the repo. To install ``spgl1`` within your current
+environment, simply type:
 ```
 make install
 ```
@@ -46,6 +61,10 @@ make dev-install_conda
 ## Getting started
 Examples can be found in the ``examples`` folder in the form of
 jupyter notebooks.
+
+## Documentation
+The official documentation is built with Sphinx and hosted on
+[readthedocs](https://spgl1.readthedocs.io/en/latest/).
 
 
 ## References

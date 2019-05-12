@@ -115,7 +115,7 @@ html_theme_options = {
 html_context = {
     'menu_links_name': 'Repository',
     'menu_links': [
-        ('<i class="fa fa-github fa-fw"></i> Source Code', 'https://github.com/drrelyea/SPGL1_python_port'),
+        ('<i class="fa fa-github fa-fw"></i> Source Code', 'https://github.com/drrelyea/spgl1'),
     ],
     # Custom variables to enable "Improve this page"" and "Download notebook"
     # links
@@ -123,7 +123,7 @@ html_context = {
     'galleries': sphinx_gallery_conf['gallery_dirs'],
     'gallery_dir': sphinx_gallery_conf['gallery_dirs'],
     'github_project': 'drrelyea',
-    'github_repo': 'SPGL1_python_port',
+    'github_repo': 'spgl1',
     'github_version': 'master',
 }
 
