@@ -1142,7 +1142,9 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
                     gstep = min(step_max, max(step_min, sts / sty))
             else:
                 gstep = min(step_max, gstep)
-            break
+            break # Leave while loop. This is done to allow stopping the
+            # computations at any time within the loop if max_matvec is
+            # reached. If this is not the case, the loop is stopped here.
 
         if stat == EXIT_MATVEC_LIMIT:
             niters -= 1
