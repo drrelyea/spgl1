@@ -1,5 +1,5 @@
 # SPGL1: Spectral Projected Gradient for L1 minimization
-[![Build Status](https://travis-ci.org/drrelyea/SPGL1_python_port.svg?branch=master)](https://travis-ci.org/drrelyea/SPGL1_python_port)
+[![Build Status](https://travis-ci.org/drrelyea/spgl1.svg?branch=master)](https://travis-ci.org/drrelyea/spgl1)
 [![PyPI version](https://badge.fury.io/py/spgl1.svg)](https://badge.fury.io/py/spgl1)
 [![Documentation Status](https://readthedocs.org/projects/spgl1/badge/?version=latest)](https://spgl1.readthedocs.io/en/latest/?badge=latest)
 
