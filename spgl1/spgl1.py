@@ -1208,7 +1208,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
         elif stat == EXIT_LEAST_SQUARES:
             _printf(fid, 'EXIT -- Found a least-squares solution')
         elif stat == EXIT_LINE_ERROR:
-            _printf(fid, 'ERROR EXIT -- Linesearch error (#%i)\n', lnerr)
+            _printf(fid, 'ERROR EXIT -- Linesearch error (%i)' % lnerr)
         elif stat == EXIT_SUBOPTIMAL_BP:
             _printf(fid, 'EXIT -- Found a suboptimal BP solution')
         elif stat == EXIT_MATVEC_LIMIT:
