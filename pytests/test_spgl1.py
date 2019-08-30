@@ -3,6 +3,8 @@ import numpy as np
 
 from numpy.testing import assert_array_almost_equal
 from scipy.sparse import spdiags, csr_matrix
+from spgl1.spgl1 import _norm_l12nn_primal, _norm_l12nn_dual, \
+    _norm_l12nn_project
 from spgl1 import spg_lasso, spg_bp, spg_bpdn, spg_mmv
 
 from scipy.sparse.linalg import lsqr as splsqr
@@ -56,11 +58,11 @@ def test_lasso(par):
     b = A.dot(x)
     tau = np.pi
 
-    xinv, resid, _, _ = spg_lasso(A, b, tau, verbosity=2)
+    xinv, resid, _, _ = spg_lasso(A, b, tau, verbosity=0)
     assert np.linalg.norm(xinv, 1) - np.pi < 1e-10
 
     # Run solver with subspace minimization
-    xinv, resid, _, _ = spg_lasso(A, b, tau, subspace_min=True, verbosity=2)
+    xinv, resid, _, _ = spg_lasso(A, b, tau, subspace_min=True, verbosity=0)
     assert np.linalg.norm(xinv, 1) - np.pi < 1e-10
 
 
@@ -89,11 +91,11 @@ def test_bp(par):
 
     # Set up vector b, and run solver
     b = A.dot(x)
-    xinv, _, _, _ = spg_bp(A, b, verbosity=2)
+    xinv, _, _, _ = spg_bp(A, b, verbosity=0)
     assert_array_almost_equal(x, xinv, decimal=3)
 
     # Run solver with subspace minimization
-    xinv, _, _, _ = spg_bp(A, b, subspace_min=True, verbosity=2)
+    xinv, _, _, _ = spg_bp(A, b, subspace_min=True, verbosity=0)
     assert_array_almost_equal(x, xinv, decimal=3)
 
 
@@ -123,11 +125,11 @@ def test_bpdn(par):
     # Set up vector b, and run solver
     b = A.dot(x) + np.random.randn(n) * 0.075
     sigma = 0.10
-    xinv, resid, _, _ = spg_bpdn(A, b, sigma, iter_lim=1000, verbosity=2)
+    xinv, resid, _, _ = spg_bpdn(A, b, sigma, iter_lim=1000, verbosity=0)
     assert np.linalg.norm(resid) < sigma*1.1 # need to check why resid is slighly bigger than sigma
 
     # Run solver with subspace minimization
-    xinv, _, _, _ = spg_bpdn(A, b, sigma, subspace_min=True, verbosity=2)
+    xinv, _, _, _ = spg_bpdn(A, b, sigma, subspace_min=True, verbosity=0)
     assert np.linalg.norm(resid) < sigma*1.1 # need to check why resid is slighly bigger than sigma
 
 
@@ -156,11 +158,11 @@ def test_bp_complex(par):
 
     # Set up vector b, and run solver
     b = A.dot(x)
-    xinv, _, _, _ = spg_bp(A, b, verbosity=2)
+    xinv, _, _, _ = spg_bp(A, b, verbosity=0)
     assert_array_almost_equal(x, xinv, decimal=3)
 
     # Run solver with subspace minimization
-    xinv, _, _, _ = spg_bp(A, b, subspace_min=True, verbosity=2)
+    xinv, _, _, _ = spg_bp(A, b, subspace_min=True, verbosity=0)
     assert_array_almost_equal(x, xinv, decimal=3)
 
 
@@ -194,7 +196,7 @@ def test_weighted_bp(par):
     # Set up weights w and vector b
     w = 0.1*np.random.rand(m) + 0.1 # Weights
     b = A.dot(x / w)  # Signal
-    xinv, _, _, _ = spg_bp(A, b, iter_lim=1000, weights=w, verbosity=2)
+    xinv, _, _, _ = spg_bp(A, b, iter_lim=1000, weights=w, verbosity=0)
 
     # Reconstructed solution, with weighting
     xinv *= w
@@ -226,14 +228,38 @@ def test_multiple_measurements(par):
     B = A.dot(W).dot(X)
 
     # Solve unweighted version
-    X_uw, _, _, _ = spg_mmv(A.dot(W), B, 0, verbosity=2)
+    X_uw, _, _, _ = spg_mmv(A.dot(W), B, 0, verbosity=0)
 
     # Solve weighted version
-    X_w, _, _, _ = spg_mmv(A, B, 0, weights=weights, verbosity=2)
+    X_w, _, _, _ = spg_mmv(A, B, 0, weights=weights, verbosity=0)
     X_w = spdiags(weights, 0, n, n).dot(X_w)
 
     assert_array_almost_equal(X, X_uw, decimal=2)
     assert_array_almost_equal(X, X_w, decimal=2)
+
+@pytest.mark.parametrize("par", [(par1), (par2), (par3),
+                                 (par1_sp), (par2_sp), (par3_sp)])
+def test_multiple_measurements_nonnegative(par):
+    """Multiple measurement vector (MMV) problem with non-negative norm:
+    """
+    # Create random m-by-n encoding matrix
+    m = par['m']
+    n = par['n']
+    k = par['k']
+    l = 6
+
+    A = np.random.randn(m, n)
+    p = np.random.permutation(n)[:k]
+    X = np.zeros((n, l))
+    X[p, :] = np.abs(np.random.randn(k, l))
+
+    B = A.dot(X)
+
+    Xnn, _, _, _ = spg_mmv(A, B, 0, project=_norm_l12nn_project,
+                            primal_norm=_norm_l12nn_primal,
+                            dual_norm=_norm_l12nn_dual, iter_lim=20,
+                            verbosity=0)
+    assert np.any(Xnn < 0) == False
 
 
 # temporary tests... will not be included in scipy later on
@@ -262,7 +288,7 @@ def test_lsqr(par):
     btol = 1e-10
     conlim = 1e12
     itn_max = 500
-    show = 2
+    show = 0
 
     xinv, istop, itn, r1norm, r2norm, anorm, acond, arnorm, xnorm, var = \
         lsqr(m, n, Aprod, y, damp, atol, btol, conlim, itn_max, show)
