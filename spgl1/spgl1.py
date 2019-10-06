@@ -272,7 +272,6 @@ def _norm_l1_project(x, weights, tau):
 
 def _norm_l12_primal(g, x, weights):
     """L1 norm with weighted input vector with number of groups equal to g
-
     Parameters
     ----------
     g : int
@@ -281,24 +280,21 @@ def _norm_l12_primal(g, x, weights):
         Input array
     weights : {float, ndarray}, optional
         Weights
-
     Returns
     -------
     nrm : float
         Group norm
-
     """
     m = x.size // g
-    if np.all(np.isreal(x)):
-        nrm = np.sum(weights*np.sqrt(np.sum(x.reshape(m, g)**2, axis=1)))
-    else:
-        nrm = np.sum(weights*np.sqrt(np.sum(np.abs(x.reshape(m, g))**2,
-                                            axis=1)))
+    xx = x.copy()
+    xx = xx.reshape(m, g)
+    if not np.all(np.isreal(xx)):
+        xx = np.abs(xx)
+    nrm = np.sum(weights * np.sqrt(np.sum(xx**2, axis=1)))
     return nrm
 
 def _norm_l12_dual(g, x, weights):
     """L_inf norm with weighted input vector with number of groups equal to g
-
     Parameters
     ----------
     g : int
@@ -307,24 +303,21 @@ def _norm_l12_dual(g, x, weights):
         Input array
     weights : {float, ndarray}, optional
         Weights
-
     Returns
     -------
     nrm : float
         Group norm
-
     """
     m = x.size // g
-    if np.all(np.isreal(x)):
-        return np.linalg.norm(np.sqrt(np.sum(x.reshape(m, g)**2,
-                                             axis=1))/weights, np.inf)
-    else:
-        return np.linalg.norm(np.sqrt(np.sum(np.abs(x.reshape(m, g))**2,
-                                             axis=1))/weights, np.inf)
+    xx = x.copy()
+    xx = xx.reshape(m, g)
+    if not np.all(np.isreal(xx)):
+        xx = np.abs(xx)
+    nrm = np.linalg.norm(np.sqrt(np.sum(xx**2, axis=1))/weights, np.inf)
+    return nrm
 
 def _norm_l12_project(g, x, weights, tau):
     """Projection with number of groups equal to g
-
     Parameters
     ----------
     g : int
@@ -335,27 +328,24 @@ def _norm_l12_project(g, x, weights, tau):
         Weights
     tau : float
         Projection radius
-
     Returns
     -------
     x : float
         Projected array
-
     """
     m = x.size // g
-    x = x.reshape(m, g)
-
-    if np.all(np.isreal(x)):
-        xa = np.sqrt(np.sum(x**2, axis=1))
-    else:
-        xa = np.sqrt(np.sum(abs(x)**2, axis=1))
+    xx = x.copy()
+    xx = xx.reshape(m, g)
+    if not np.all(np.isreal(xx)):
+        xx = np.abs(xx)
+    xa = np.sqrt(np.sum(xx**2, axis=1))
 
     idx = xa < np.spacing(1)
     xc = oneprojector(xa, weights, tau)
     xc = xc / xa
     xc[idx] = 0
-    x = spdiags(xc, 0, m, m)*x
-    return x.flatten()
+    xx = spdiags(xc, 0, m, m) * xx
+    return xx.flatten()
 
 def _norm_l1nn_primal(x, weights):
     """Non-negative L1 gauge function
@@ -421,6 +411,92 @@ def _norm_l1nn_project(x, weights, tau):
     xx = x.copy()
     xx[xx < 0] = 0
     return _norm_l1_project(xx, weights, tau)
+
+def _norm_l12nn_primal(g, x, weights):
+    """Non-negative L1 norm with weighted input vector with number
+    of groups equal to g
+
+    Parameters
+    ----------
+    g : int
+        Number of groups
+    x : ndarray
+        Input array
+    weights : {float, ndarray}, optional
+        Weights
+
+    Returns
+    -------
+    nrm : float
+        Group norm
+
+    """
+    m = x.size // g
+
+    if np.any(x < 0):
+        nrm = np.inf
+    else:
+        xm = x.reshape(m, g)
+        if not np.all(np.isreal(x)):
+            xm = np.abs(xm)
+        nrm = np.sum(weights*np.sqrt(np.sum(xm**2, axis=1)))
+    return nrm
+
+def _norm_l12nn_dual(g, x, weights):
+    """Dual on non-legative L1L norm with weighted input vector
+    with number of groups equal to g
+
+    Parameters
+    ----------
+    g : int
+        Number of groups
+    x : ndarray
+        Input array
+    weights : {float, ndarray}, optional
+        Weights
+
+    Returns
+    -------
+    nrm : float
+        Group norm
+
+    """
+    m = x.size // g
+    xx = x.copy()
+    xx = xx.reshape(m, g)
+
+    if not np.all(np.isreal(xx)):
+        xx = np.abs(xx)
+    xx[xx < 0] = 0
+    nrm = np.linalg.norm(np.sqrt(np.sum(xx ** 2, axis=1)) / weights, np.inf)
+    return nrm
+
+def _norm_l12nn_project(g, x, weights, tau):
+    """Projection with number of groups equal to g
+
+    Parameters
+    ----------
+    g : int
+        Number of groups
+    x : ndarray
+        Input array
+    weights : {float, ndarray}, optional
+        Weights
+    tau : float
+        Projection radius
+
+    Returns
+    -------
+    x : float
+        Projected array
+
+    """
+    xx = x.copy()
+    if not np.all(np.isreal(xx)):
+        xx = np.abs(xx)
+    xx[xx < 0] = 0
+    return _norm_l12_project(g, xx, weights, tau)
+
 
 def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau):
     """Projected backtracking linesearch.
@@ -1402,9 +1478,19 @@ def spg_mmv(A, B, sigma=0, **kwargs):
     A = _blockdiag(A, m, n, groups)
 
     # Set projection specific functions
-    project = lambda x, weight, tau: _norm_l12_project(groups, x, weight, tau)
-    primal_norm = lambda x, weight: _norm_l12_primal(groups, x, weight)
-    dual_norm = lambda x, weight: _norm_l12_dual(groups, x, weight)
+    _primal_norm = _norm_l12_primal if 'primal_norm' not in kwargs.keys() \
+        else kwargs['primal_norm']
+    _dual_norm = _norm_l12_dual if 'dual_norm' not in kwargs.keys() \
+        else kwargs['dual_norm']
+    _project = _norm_l12_project if 'project' not in kwargs.keys() \
+        else kwargs['project']
+    kwargs.pop('primal_norm', None)
+    kwargs.pop('dual_norm', None)
+    kwargs.pop('project', None)
+
+    project = lambda x, weight, tau: _project(groups, x, weight, tau)
+    primal_norm = lambda x, weight: _primal_norm(groups, x, weight)
+    dual_norm = lambda x, weight: _dual_norm(groups, x, weight)
 
     tau = 0
     x0 = None
