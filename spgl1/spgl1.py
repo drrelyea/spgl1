@@ -497,7 +497,6 @@ def _norm_l12nn_project(g, x, weights, tau):
     xx[xx < 0] = 0
     return _norm_l12_project(g, xx, weights, tau)
 
-
 def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau):
     """Projected backtracking linesearch.
 
@@ -748,9 +747,14 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
     bp_tol : float, optional
         Tolerance for identifying a basis pursuit solution.
     ls_tol : float, optional
-         Tolerance for basis pursuit solution.
+         Tolerance for least-squares solution. Iterations are stopped when the
+         ratio between the dual norm of the gradient and the L2 norm of the
+         residual becomes smaller or equal to ``ls_tol``.
     opt_tol : float, optional
-        Optimality tolerance (default is ``1e-4``).
+        Optimality tolerance. More specifically, when using basis pursuit
+        denoise, the optimility condition is met when the absolute difference
+        between the L2 norm of the residual and the ``sigma`` is smaller than
+        ``opt_tol``.
     dec_tol : float, optional
         Required relative change in primal objective for Newton.
         Larger ``decTol`` means more frequent Newton updates.
@@ -909,9 +913,9 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
         subspace_min = False
 
     #% Pre-allocate iteration info vectors
-    xnorm1 = np.zeros(min(iter_lim, _allocSize))
-    rnorm2 = np.zeros(min(iter_lim, _allocSize))
-    lambdaa = np.zeros(min(iter_lim, _allocSize))
+    xnorm1 = np.zeros(min(iter_lim + 1, _allocSize))
+    rnorm2 = np.zeros(min(iter_lim + 1, _allocSize))
+    lambdaa = np.zeros(min(iter_lim + 1, _allocSize))
 
     # Log header.
     if verbosity >= 1:
@@ -1049,7 +1053,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
                     last_fv[1] = f
 
         # Too many iterations and not converged.
-        if not stat and niters+1 >= iter_lim:
+        if not stat and niters >= iter_lim:
             stat = EXIT_ITERATIONS
 
         # Print log, update history and act on exit conditions.
@@ -1103,8 +1107,8 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
                                project, weights, tau)
             time_project += time_project_curvy
             time_matprod += time_matprod_curvy
-            nprodA += niter_line
-            nline_tot = nline_tot + niter_line
+            nprodA += niter_line + 1
+            nline_tot += niter_line
             if nprodA + nprodAt > max_matvec:
                 stat = EXIT_MATVEC_LIMIT
                 break
@@ -1121,7 +1125,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
                 f, x, r, niter_line, lnerr, time_matprod = \
                     _spg_line(f, x, dx, gtd, max(last_fv), A, b)
                 time_matprod += time_matprod
-                nprodA += niter_line
+                nprodA += niter_line + 1
                 nline_tot += niter_line
                 if nprodA + nprodAt > max_matvec:
                     stat = EXIT_MATVEC_LIMIT
