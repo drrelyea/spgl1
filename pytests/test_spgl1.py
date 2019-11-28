@@ -3,8 +3,8 @@ import numpy as np
 
 from numpy.testing import assert_array_almost_equal
 from scipy.sparse import spdiags, csr_matrix
-from spgl1.spgl1 import _norm_l12nn_primal, _norm_l12nn_dual, \
-    _norm_l12nn_project
+from spgl1.spgl1 import norm_l12nn_primal, norm_l12nn_dual, \
+    norm_l12nn_project
 from spgl1 import spg_lasso, spg_bp, spg_bpdn, spg_mmv
 
 from scipy.sparse.linalg import lsqr as splsqr
@@ -237,6 +237,7 @@ def test_multiple_measurements(par):
     assert_array_almost_equal(X, X_uw, decimal=2)
     assert_array_almost_equal(X, X_w, decimal=2)
 
+
 @pytest.mark.parametrize("par", [(par1), (par2), (par3),
                                  (par1_sp), (par2_sp), (par3_sp)])
 def test_multiple_measurements_nonnegative(par):
@@ -255,9 +256,9 @@ def test_multiple_measurements_nonnegative(par):
 
     B = A.dot(X)
 
-    Xnn, _, _, _ = spg_mmv(A, B, 0, project=_norm_l12nn_project,
-                            primal_norm=_norm_l12nn_primal,
-                            dual_norm=_norm_l12nn_dual, iter_lim=20,
+    Xnn, _, _, _ = spg_mmv(A, B, 0, project=norm_l12nn_project,
+                            primal_norm=norm_l12nn_primal,
+                            dual_norm=norm_l12nn_dual, iter_lim=20,
                             verbosity=0)
     assert np.any(Xnn < 0) == False
 

@@ -11,8 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from spgl1 import spg_mmv
-from spgl1 import _norm_l12nn_primal, \
-    _norm_l12nn_dual, _norm_l12nn_project
+from spgl1 import norm_l12nn_primal, norm_l12nn_dual, norm_l12nn_project
 
 
 ###############################################################################
@@ -29,9 +28,9 @@ weights = data['weights']
 X, _, _, info = spg_mmv(A, B, 0.5, iter_lim=100, verbosity=0)
 
 XNN, _, _, infoNN = spg_mmv(A, B, 0.5, iter_lim=100, verbosity=0,
-                            project=_norm_l12nn_project,
-                            primal_norm=_norm_l12nn_primal,
-                            dual_norm=_norm_l12nn_dual)
+                            project=norm_l12nn_project,
+                            primal_norm=norm_l12nn_primal,
+                            dual_norm=norm_l12nn_dual)
 print('Negative X - MMV:', np.any(X < 0))
 print('Negative X - MMVNN:', np.any(XNN < 0))
 print('Residual norm - MMV:', info['rnorm'])
@@ -55,9 +54,9 @@ X, _, _, info = spg_mmv(A, B, 0.5, iter_lim=100,
                         weights=np.array(weights), verbosity=0)
 XNN, _, _, infoNN = spg_mmv(A, B, 0.5, iter_lim=100, verbosity=0,
                             weights=np.array(weights),
-                            project=_norm_l12nn_project,
-                            primal_norm=_norm_l12nn_primal,
-                            dual_norm=_norm_l12nn_dual)
+                            project=norm_l12nn_project,
+                            primal_norm=norm_l12nn_primal,
+                            dual_norm=norm_l12nn_dual)
 print('Negative X - MMV:', np.any(X < 0))
 print('Negative X - MMVNN:', np.any(XNN < 0))
 print('Residual norm - MMV:', info['rnorm'])
