@@ -347,7 +347,7 @@ def _norm_l12_project(g, x, weights, tau):
     xx = spdiags(xc, 0, m, m) * xx
     return xx.flatten()
 
-def _norm_l1nn_primal(x, weights):
+def norm_l1nn_primal(x, weights):
     """Non-negative L1 gauge function
 
     Parameters
@@ -369,7 +369,7 @@ def _norm_l1nn_primal(x, weights):
         p = np.linalg.norm(x * weights, 1)
     return p
 
-def _norm_l1nn_dual(x, weights):
+def norm_l1nn_dual(x, weights):
     """Dual of non-negative L1 gauge function
 
     Parameters
@@ -390,7 +390,7 @@ def _norm_l1nn_dual(x, weights):
     p = np.linalg.norm(xx/weights, np.inf)
     return p
 
-def _norm_l1nn_project(x, weights, tau):
+def norm_l1nn_project(x, weights, tau):
     """Projection onto the non-negative part of the one-norm ball
 
     Parameters
@@ -412,7 +412,7 @@ def _norm_l1nn_project(x, weights, tau):
     xx[xx < 0] = 0
     return _norm_l1_project(xx, weights, tau)
 
-def _norm_l12nn_primal(g, x, weights):
+def norm_l12nn_primal(g, x, weights):
     """Non-negative L1 norm with weighted input vector with number
     of groups equal to g
 
@@ -442,7 +442,7 @@ def _norm_l12nn_primal(g, x, weights):
         nrm = np.sum(weights*np.sqrt(np.sum(xm**2, axis=1)))
     return nrm
 
-def _norm_l12nn_dual(g, x, weights):
+def norm_l12nn_dual(g, x, weights):
     """Dual on non-legative L1L norm with weighted input vector
     with number of groups equal to g
 
@@ -471,7 +471,7 @@ def _norm_l12nn_dual(g, x, weights):
     nrm = np.linalg.norm(np.sqrt(np.sum(xx ** 2, axis=1)) / weights, np.inf)
     return nrm
 
-def _norm_l12nn_project(g, x, weights, tau):
+def norm_l12nn_project(g, x, weights, tau):
     """Projection with number of groups equal to g
 
     Parameters
