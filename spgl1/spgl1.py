@@ -94,7 +94,7 @@ def _printf(fid, message):
 
 def _oneprojector_i(b, tau):
     n = b.size
-    x = np.zeros(n)
+    x = np.zeros(n, dtype=b.dtype)
     bNorm = np.linalg.norm(b, 1)
 
     if tau >= bNorm:
@@ -120,7 +120,7 @@ def _oneprojector_i(b, tau):
 
 def _oneprojector_d(b, d, tau):
     n = b.size
-    x = np.zeros(n)
+    x = np.zeros(n, dtype=b.dtype)
 
     if tau >= np.linalg.norm(d*b, 1):
         x = b.copy()
