@@ -45,7 +45,7 @@ class _LSQRprod(LinearOperator):
         self.shape = (A.shape[0], self.nbar)
         self.dtype = A.dtype
     def _matvec(self, x):
-        y = np.zeros(self.n)
+        y = np.zeros(self.n, dtype=x.dtype)
         y[self.nnz_idd] = \
             x - (1. / self.nbar) * np.dot(np.dot(np.conj(self.ebar),
                                                  x), self.ebar)
@@ -106,7 +106,7 @@ def _oneprojector_i(b, tau):
         b = b[idx]
 
         csb = np.cumsum(b) - tau
-        alpha = np.zeros(n+1)
+        alpha = np.zeros(n + 1)
         alpha[1:] = csb / (np.arange(n) + 1.0)
         alphaindex = np.where(alpha[1:] >= b)[0]
         if alphaindex.any():
@@ -160,11 +160,11 @@ def oneprojector(b, d, tau):
     Projects b onto the (weighted) one-norm ball of radius tau.
     If d=1 solves the problem::
 
-        minimize_x  ||b-x||_2  st  ||x||_1 <= tau.
+        minimize_x  ||b-x||_2  subject to  ||x||_1 <= tau.
 
     else::
 
-        minimize_x  ||b-x||_2  st  || Dx ||_1 <= tau.
+        minimize_x  ||b-x||_2  subject to  ||Dx||_1 <= tau.
 
     Parameters
     ----------
@@ -881,7 +881,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
     # Determine initial x and see if problem is complex
     realx = np.lib.isreal(A).all() and np.lib.isreal(b).all()
     if x0 is None:
-        x = np.zeros(n)
+        x = np.zeros(n, dtype=b.dtype)
     else:
         x = np.asarray(x0)
 
@@ -1174,7 +1174,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
                     # LSQR iterations successful. Take the subspace step.
                     if istop != 4:
                         # Push dx back into full space: dx = Z dx.
-                        dx = np.zeros(n)
+                        dx = np.zeros(n, dtype=x.dtype)
                         dx[nnz_idx] = \
                             dxbar - (1/nebar)*np.dot(np.dot(np.conj(ebar.T),
                                                             dxbar), dxbar)
@@ -1288,7 +1288,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
         elif stat == EXIT_LEAST_SQUARES:
             _printf(fid, 'EXIT -- Found a least-squares solution')
         elif stat == EXIT_LINE_ERROR:
-            _printf(fid, 'ERROR EXIT -- Linesearch error (%i)' % lnerr)
+            _printf(fid, 'ERROR EXIT -- Linesearch error (%d)' % lnerr)
         elif stat == EXIT_SUBOPTIMAL_BP:
             _printf(fid, 'EXIT -- Found a suboptimal BP solution')
         elif stat == EXIT_MATVEC_LIMIT:
