@@ -1350,10 +1350,7 @@ def spg_bp(A, b, **kwargs):
     info : dict
         See splg1.
     """
-    sigma = 0
-    tau = 0
-    x0 = None
-    x, r, g, info = spgl1(A, b, tau, sigma, x0, **kwargs)
+    x, r, g, info = spgl1(A=A, b=b, **kwargs)
     return x, r, g, info
 
 def spg_bpdn(A, b, sigma, **kwargs):
@@ -1393,9 +1390,7 @@ def spg_bpdn(A, b, sigma, **kwargs):
         See spgl1.
 
     """
-    tau = 0
-    x0 = None
-    x, r, g, info = spgl1(A, b, tau, sigma, x0, **kwargs)
+    x, r, g, info = spgl1(A=A, b=b, sigma=sigma, **kwargs)
     return x, r, g, info
 
 def spg_lasso(A, b, tau, **kwargs):
@@ -1434,9 +1429,7 @@ def spg_lasso(A, b, tau, **kwargs):
         See spgl1.
 
     """
-    sigma = 0
-    x0 = None
-    x, r, g, info = spgl1(A, b, tau, sigma, x0, **kwargs)
+    x, r, g, info = spgl1(A=A, b=b, sigma=sigma, **kwargs)
     return x, r, g, info
 
 def spg_mmv(A, B, sigma=0, **kwargs):
