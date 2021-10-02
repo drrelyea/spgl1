@@ -259,13 +259,13 @@ def _norm_l1_project(x, weights, tau):
         Projected array
 
     """
-    if np.all(np.isreal(x)):
+    if not np.iscomplexobj(x):
         xproj = oneprojector(x, weights, tau)
     else:
         xa = np.abs(x)
         idx = xa < _eps
         xc = oneprojector(xa, weights, tau)
-        xc /= xa
+        xc /= xa + 1e-10
         xc[idx] = 0
         xproj = x * xc
     return xproj
@@ -288,7 +288,7 @@ def _norm_l12_primal(g, x, weights):
     m = x.size // g
     xx = x.copy()
     xx = xx.reshape(m, g)
-    if not np.all(np.isreal(xx)):
+    if np.iscomplexobj(xx):
         xx = np.abs(xx)
     nrm = np.sum(weights * np.sqrt(np.sum(xx**2, axis=1)))
     return nrm
@@ -311,7 +311,7 @@ def _norm_l12_dual(g, x, weights):
     m = x.size // g
     xx = x.copy()
     xx = xx.reshape(m, g)
-    if not np.all(np.isreal(xx)):
+    if np.iscomplexobj(xx):
         xx = np.abs(xx)
     nrm = np.linalg.norm(np.sqrt(np.sum(xx**2, axis=1))/weights, np.inf)
     return nrm
@@ -336,7 +336,7 @@ def _norm_l12_project(g, x, weights, tau):
     m = x.size // g
     xx = x.copy()
     xx = xx.reshape(m, g)
-    if not np.all(np.isreal(xx)):
+    if np.iscomplexobj(xx):
         xx = np.abs(xx)
     xa = np.sqrt(np.sum(xx**2, axis=1))
 
@@ -437,7 +437,7 @@ def norm_l12nn_primal(g, x, weights):
         nrm = np.inf
     else:
         xm = x.reshape(m, g)
-        if not np.all(np.isreal(x)):
+        if np.iscomplexobj(x):
             xm = np.abs(xm)
         nrm = np.sum(weights*np.sqrt(np.sum(xm**2, axis=1)))
     return nrm
@@ -465,7 +465,7 @@ def norm_l12nn_dual(g, x, weights):
     xx = x.copy()
     xx = xx.reshape(m, g)
 
-    if not np.all(np.isreal(xx)):
+    if np.iscomplexobj(xx):
         xx = np.abs(xx)
     xx[xx < 0] = 0
     nrm = np.linalg.norm(np.sqrt(np.sum(xx ** 2, axis=1)) / weights, np.inf)
@@ -492,7 +492,7 @@ def norm_l12nn_project(g, x, weights, tau):
 
     """
     xx = x.copy()
-    if not np.all(np.isreal(xx)):
+    if np.iscomplexobj(xx):
         xx = np.abs(xx)
     xx[xx < 0] = 0
     return _norm_l12_project(g, xx, weights, tau)
