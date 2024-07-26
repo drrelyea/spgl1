@@ -1,0 +1,43 @@
+[build-system]
+requires = [
+    "setuptools >= 65",
+    "setuptools_scm[toml]",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spgl1"
+description = "SPGL1: A solver for large-scale sparse reconstruction."
+readme = "README.md"
+authors = [
+    {name = "David Relyea", email = "drrelyea@gmail.com"},
+    {name = "Matteo Ravasi", email = "matteoravasi@gmail.com"},
+]
+license = {file = "License.md"}
+keywords = ["algebra", "inverse problems", "large-scale optimization"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = [
+    "numpy >= 1.15.0",
+    "scipy",
+]
+dynamic = ["version"]
+
+[tool.setuptools.packages.find]
+exclude = ["pytests"]
+
+[tool.setuptools_scm]
+version_file = "spgl1/version.py"
