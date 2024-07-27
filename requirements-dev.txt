@@ -6,9 +6,15 @@ jupyter
 pytest
 pytest-runner
 setuptools_scm
+docutils<0.18
 Sphinx
 sphinx-rtd-theme
 sphinx-gallery
 numpydoc
 nbsphinx
 image
+pre-commit
+autopep8
+isort
+black
+flake8

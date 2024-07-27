@@ -16,7 +16,7 @@ It is designed to solve any of the following three problems:
 
 2. Basis pursuit (BP):
    ``minimize   ||x||_1  subject to  Ax = b``
- 
+
 3. Lasso:
    ``minimize  ||Ax - b||_2  subject to  ||x||_1 <= tau``,
 
