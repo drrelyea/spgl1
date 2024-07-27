@@ -554,7 +554,7 @@ def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau):
     while 1:
         # Evaluate trial point and function value.
         start_time_project = time.time()
-        xnew = project(x - step*scale*g, weights, tau)
+        xnew = project(x - (step*scale*g).astype(g.dtype), weights, tau)
         timeproject += time.time() - start_time_project
         start_time_matprod = time.time()
         rnew = b - A.matvec(xnew)
@@ -879,7 +879,7 @@ def spgl1(A, b, tau=0, sigma=0, x0=None, fid=None, verbosity=0,
     test_updatetau = False # Previous step did not update tau
 
     # Determine initial x and see if problem is complex
-    realx = np.lib.isreal(A).all() and np.lib.isreal(b).all()
+    realx = np.isreal(A).all() and np.isreal(b).all()
     if x0 is None:
         x = np.zeros(n, dtype=b.dtype)
     else:
