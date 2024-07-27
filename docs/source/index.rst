@@ -49,6 +49,7 @@ where more appropriate implementation choices were identified for the Python pro
    :hidden:
 
    Installation <installation.rst>
+   Tutorials <tutorials/index.rst>
    Reference documentation <api/index.rst>
    Credits <credits.rst>
 

@@ -3,7 +3,6 @@ import sys
 import os
 import datetime
 import sphinx_rtd_theme
-import sphinx_gallery
 from sphinx_gallery.sorting import ExampleTitleSortKey
 from pkg_resources import get_distribution
 
@@ -75,6 +74,7 @@ plot_formats = ['png']
 templates_path = ['_templates']
 exclude_patterns = ['_build', '**.ipynb_checkpoints']
 source_suffix = '.rst'
+
 # The encoding of source files.
 source_encoding = 'utf-8-sig'
 master_doc = 'index'
@@ -106,7 +106,6 @@ html_show_sphinx = True
 html_show_copyright = True
 
 # Theme config
-#html_theme = "alabaster"
 html_theme = "sphinx_rtd_theme"
 html_theme_options = {
     'logo_only': True,
@@ -129,4 +128,4 @@ html_context = {
 
 # Load the custom CSS files (needs sphinx >= 1.6 for this to work)
 def setup(app):
-    app.add_stylesheet("style.css")
+    app.add_css_file("style.css")

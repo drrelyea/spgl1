@@ -4,6 +4,7 @@ channels:
   - conda-forge
 dependencies:
   - python>=3.6.4
+  - pip
   - numpy>=1.15.0
   - scipy
   - matplotlib
@@ -12,6 +13,10 @@ dependencies:
   - pytest
   - Sphinx
   - numpydoc
+  - pre-commit
+  - autopep8
+  - isort
+  - black
   - pip:
     - pytest-runner
     - setuptools_scm
@@ -19,3 +24,4 @@ dependencies:
     - sphinx-gallery
     - nbsphinx
     - image
+    - flake8
