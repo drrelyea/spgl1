@@ -892,13 +892,10 @@ def spgl1(
     A = aslinearoperator(A)
     m, n = A.shape
 
-    # Determine mode: single tau (LASSO) or root-finding (BPDN)
-    # MATLAB logic: singleTau = (isempty(sigma) && ~isempty(tau))
-    # In Python: single_tau when sigma is not provided (0) and tau is provided (nonzero)
-    if sigma == 0 and tau != 0:
-        single_tau = True  # LASSO mode: minimize ||Ax-b||_2 s.t. ||x||_1 <= tau
+    if tau == 0:
+        single_tau = False
     else:
-        single_tau = False  # Root-finding mode: minimize ||x||_1 s.t. ||Ax-b||_2 <= sigma
+        single_tau = True
 
     if iter_lim is None:
         iter_lim = 10 * m
@@ -927,14 +924,11 @@ def spgl1(
     test_updatetau = False  # Previous step did not update tau
 
     # Determine initial x and see if problem is complex
-    # For LinearOperators, check dtype instead of calling isreal on the operator
+    realx = np.isreal(A).all() and np.isreal(b).all()
     if x0 is None:
         x = np.zeros(n, dtype=b.dtype)
     else:
         x = np.asarray(x0)
-
-    # Determine if problem is real or complex-valued
-    realx = not np.iscomplexobj(b) and not np.iscomplexobj(x)
 
     # Override realx when iscomplex flag is set
     if iscomplex:
@@ -1071,8 +1065,8 @@ def spgl1(
         if nnz_diff:
             nnz_niters = 0
         else:
-            nnz_niters += 1
-            if nnz_niters >= active_set_niters:
+            nnz_niters += nnz_niters
+            if nnz_niters + 1 >= active_set_niters:
                 stat = EXIT_ACTIVE_SET
 
         # Single tau: Check if were optimal.
