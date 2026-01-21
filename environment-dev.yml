@@ -3,25 +3,25 @@ channels:
   - defaults
   - conda-forge
 dependencies:
-  - python>=3.6.4
+  - python>=3.9
   - pip
-  - numpy>=1.15.0
-  - scipy
-  - matplotlib
-  - ipython
+  - numpy>=1.21.0
+  - scipy>=1.7.0
+  - matplotlib>=3.5
+  - ipython>=8.0
   - jupyter
-  - pytest
-  - Sphinx
-  - numpydoc
-  - pre-commit
+  - pytest>=7.0
+  - pytest-cov
+  - sphinx>=5.0
+  - numpydoc>=1.5
+  - pre-commit>=3.0
   - autopep8
-  - isort
-  - black
+  - isort>=5.0
+  - black>=23.0
+  - flake8>=6.0
   - pip:
     - pytest-runner
     - setuptools_scm
-    - sphinx-rtd-theme
-    - sphinx-gallery
-    - nbsphinx
-    - image
-    - flake8
+    - sphinx-rtd-theme>=1.0
+    - sphinx-gallery>=0.11
+    - nbsphinx>=0.8

@@ -1,8 +1,9 @@
 name: spgl1
 channels:
   - defaults
+  - conda-forge
 dependencies:
-  - python>=3.6.4
+  - python>=3.9
   - pip
-  - numpy>=1.15.0
-  - scipy
+  - numpy>=1.21.0
+  - scipy>=1.7.0
