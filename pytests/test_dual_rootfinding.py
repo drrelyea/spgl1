@@ -170,8 +170,8 @@ class TestDualVsPrimalComparison:
 class TestRootfindTolParameter:
     """Test rootfind_tol parameter behavior."""
 
-    def test_rootfind_tol_affects_dual_mode(self):
-        """Test that rootfind_tol changes dual mode behavior."""
+    def test_rootfind_tol_accepted_in_dual_mode(self):
+        """Test that rootfind_tol parameter is accepted in dual mode."""
         np.random.seed(507)
         A = np.random.randn(30, 60)
         x_true = np.zeros(60)
@@ -179,20 +179,21 @@ class TestRootfindTolParameter:
         b = A @ x_true + 0.05 * np.random.randn(30)
         sigma = 0.1 * np.linalg.norm(b)
 
-        # Run with default rootfind_tol
+        # Run with different rootfind_tol values
+        # (The parameter should be accepted; exact behavior depends on problem)
         x1, r1, g1, info1 = spgl1(A, b, tau=0, sigma=sigma,
-                                  rootfind_mode=1, rootfind_tol=0.5)
+                                  rootfind_mode=1, rootfind_tol=0.3,
+                                  iter_lim=500)
 
-        # Run with tighter rootfind_tol
         x2, r2, g2, info2 = spgl1(A, b, tau=0, sigma=sigma,
-                                  rootfind_mode=1, rootfind_tol=0.9)
+                                  rootfind_mode=1, rootfind_tol=0.9,
+                                  iter_lim=500)
 
-        # Both should produce finite solutions
+        # Both should produce valid finite solutions
         assert np.all(np.isfinite(x1))
         assert np.all(np.isfinite(x2))
 
-        # Different tolerances may lead to different iteration counts
-        # (but we don't enforce this strictly)
+        # Both should converge
         assert info1['niters'] > 0
         assert info2['niters'] > 0
 

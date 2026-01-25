@@ -1180,9 +1180,6 @@ def spgl1(
                     and not test_updatetau
                 )
 
-                if test_updatetau:
-                    # Update tau using primal method
-                    tau = max(0, tau + (rnorm * aerror1) / gnorm_best)
             else:
                 # ------------------------
                 # Dual-based root-finding
@@ -1214,14 +1211,18 @@ def spgl1(
                     test_updatetau = False
                 elif rgap <= dec_tol:
                     test_updatetau = True
-                    tau = tau_new
                 elif ratio >= rootfind_tol:
                     test_updatetau = True
-                    tau = tau_new
 
-            # Common tau update processing (for both modes)
+            # Update tau if needed (common for both primal and dual modes)
             if test_updatetau:
                 tau_old = tau
+                if rootfind_mode == 0:
+                    # Primal mode: compute tau directly
+                    tau = max(0, tau + (rnorm * aerror1) / gnorm_best)
+                else:
+                    # Dual mode: use tau_new computed above
+                    tau = tau_new
                 n_newton += 1
                 print_tau = np.abs(tau_old - tau) >= 1e-6 * tau  # For log only.
                 if tau < tau_old:
