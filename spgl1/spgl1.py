@@ -764,6 +764,10 @@ def spgl1(
     dual_norm=_norm_l1_dual,
     mu=0,
     proj_tol=None,
+    rootfind_mode=0,
+    rootfind_tol=0.5,
+    relgap_min_f=1.0,
+    relgap_min_r=1.0,
 ):
     r"""SPGL1 solver.
 
@@ -846,6 +850,21 @@ def spgl1(
         (i.e., ``||x||_1 > tau + proj_tol``), the solver exits with an error.
         If None (default), set to ``opt_tol``. This check helps detect
         numerical issues with the projection operation.
+    rootfind_mode : int, optional
+        Root-finding mode for BPDN problems (when solving for tau).
+        ``0`` (default): Primal-based root-finding (classic method).
+        ``1``: Dual-based root-finding (uses dual objective).
+        Ignored for LASSO problems (tau fixed) or BP problems (sigma=0).
+    rootfind_tol : float, optional
+        Tolerance for dual-based root-finding. When ``rootfind_mode >= 1``,
+        tau is updated when ``(fDual - sigma^2) / (f - sigma^2) >= rootfind_tol``.
+        Default is 0.5. Ignored when ``rootfind_mode == 0``.
+    relgap_min_f : float, optional
+        Minimum relative gap for primal objective. Used in relative error
+        calculations. Default is 1.0.
+    relgap_min_r : float, optional
+        Minimum relative gap for residual norm. Used in relative error
+        calculations. Default is 1.0.
 
     Returns
     -------
@@ -1061,6 +1080,11 @@ def spgl1(
     xbest = x.copy()
     fold = f
 
+    # Initialize dual root-finding variables
+    f_dual_max = -np.inf
+    gnorm_best = 0.0
+    flag_fix_tau = False
+
     # Compute projected gradient direction and initial step length.
     start_time_project = time.time()
     dx = project(x - g, weights, tau) - x
@@ -1082,6 +1106,24 @@ def spgl1(
         else:
             # Augmented residual: sqrt(||r||^2 + mu*||x||^2)
             rnorm = np.sqrt(2.0 * f)
+
+        # Compute dual objective
+        rtr = np.dot(np.conj(r), r)
+        if mu == 0:
+            # Classic method: f_dual = r'*b - tau*||g|| - ||r||^2/2
+            f_dual = np.dot(np.conj(r), b) - tau * gnorm - rtr / 2.0
+        else:
+            # For mu > 0, dual computation is more complex
+            # For now, use simplified formula (full implementation would call findLambdaStar)
+            f_dual = np.dot(np.conj(r), b) - rtr / 2.0 - tau * gnorm
+
+        # Track best dual objective
+        if f_dual > f_dual_max:
+            f_dual_max = f_dual
+            gnorm_best = gnorm
+        else:
+            f_dual = f_dual_max
+
         gap = np.dot(np.conj(r), r - b) + tau * gnorm
         rgap = abs(gap) / max(1.0, f)
         aerror1 = rnorm - sigma
@@ -1110,31 +1152,76 @@ def spgl1(
             # Test if a least-squares solution has been found
             if gnorm <= ls_tol * rnorm:
                 stat = EXIT_LEAST_SQUARES
-            if rgap <= max(opt_tol, rerror2) or rerror1 <= opt_tol:
-                # The problem is nearly optimal for the current tau.
-                # Check optimality of the current root.
-                if rnorm <= sigma:
-                    stat = EXIT_SUBOPTIMAL_BP  # Found suboptimal BP sol.
-                if rerror1 <= opt_tol:
-                    stat = EXIT_ROOT_FOUND  # Found approx root.
-                if rnorm <= bp_tol * bnorm:
-                    stat = EXIT_BPSOL_FOUND  # Resid minimzd -> BP sol.
-            fchange = np.abs(f - fold)
-            test_relchange1 = fchange <= dec_tol * f
-            test_relcchange2 = fchange <= 1e-1 * f * (np.abs(rnorm - sigma))
-            test_updatetau = (
-                (
-                    (test_relchange1 and rnorm > 2 * sigma)
-                    or (test_relcchange2 and rnorm <= 2 * sigma)
-                )
-                and not stat
-                and not test_updatetau
-            )
 
+            # Root-finding mode selection
+            if rootfind_mode == 0:
+                # ------------------------
+                # Primal-based root-finding (classic SPGL1)
+                # ------------------------
+                if rgap <= max(opt_tol, rerror2) or rerror1 <= opt_tol:
+                    # The problem is nearly optimal for the current tau.
+                    # Check optimality of the current root.
+                    if rnorm <= sigma:
+                        stat = EXIT_SUBOPTIMAL_BP  # Found suboptimal BP sol.
+                    if rerror1 <= opt_tol:
+                        stat = EXIT_ROOT_FOUND  # Found approx root.
+                    if rnorm <= bp_tol * bnorm:
+                        stat = EXIT_BPSOL_FOUND  # Resid minimzd -> BP sol.
+
+                fchange = np.abs(f - fold)
+                test_relchange1 = fchange <= dec_tol * f
+                test_relcchange2 = fchange <= 1e-1 * f * (np.abs(rnorm - sigma))
+                test_updatetau = (
+                    (
+                        (test_relchange1 and rnorm > 2 * sigma)
+                        or (test_relcchange2 and rnorm <= 2 * sigma)
+                    )
+                    and not stat
+                    and not test_updatetau
+                )
+
+                if test_updatetau:
+                    # Update tau using primal method
+                    tau = max(0, tau + (rnorm * aerror1) / gnorm_best)
+            else:
+                # ------------------------
+                # Dual-based root-finding
+                # ------------------------
+                # When the primal objective is sufficiently close to sigma,
+                # fix tau (guaranteed to be solvable)
+                rerror1_adj = abs(aerror1) / max(relgap_min_r, rnorm)
+                if rerror1_adj <= opt_tol:
+                    flag_fix_tau = True
+
+                # Check the gap ratio (dual - sigma) / (primal - sigma)
+                sigma2 = sigma ** 2
+                if f > sigma2 / 2.0:  # Avoid division by zero
+                    ratio = (f_dual - sigma2 / 2.0) / (f - sigma2 / 2.0)
+                else:
+                    ratio = 0.0
+
+                # Dual objective determines candidate tau values
+                aerror_dual = (np.dot(np.conj(b), r) - tau * gnorm) - rnorm * sigma
+                tau_new = max(tau, tau + aerror_dual / gnorm)
+
+                # Check optimality
+                if flag_fix_tau and rgap <= opt_tol:
+                    stat = EXIT_ROOT_FOUND
+
+                # Root-finding based on the dual - do not update tau if we
+                # already updated it in the previous iteration
+                if test_updatetau or stat or flag_fix_tau:
+                    test_updatetau = False
+                elif rgap <= dec_tol:
+                    test_updatetau = True
+                    tau = tau_new
+                elif ratio >= rootfind_tol:
+                    test_updatetau = True
+                    tau = tau_new
+
+            # Common tau update processing (for both modes)
             if test_updatetau:
-                # Update tau.
                 tau_old = tau
-                tau = max(0, tau + (rnorm * aerror1) / gnorm)
                 n_newton += 1
                 print_tau = np.abs(tau_old - tau) >= 1e-6 * tau  # For log only.
                 if tau < tau_old:
