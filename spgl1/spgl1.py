@@ -25,6 +25,7 @@ EXIT_LINE_ERROR = 6
 EXIT_SUBOPTIMAL_BP = 7
 EXIT_MATVEC_LIMIT = 8
 EXIT_ACTIVE_SET = 9
+EXIT_PROJECTION = 10
 EXIT_CONVERGED_spgline = 0
 EXIT_ITERATIONS_spgline = 1
 EXIT_NODESCENT_spgline = 2
@@ -762,6 +763,7 @@ def spgl1(
     primal_norm=_norm_l1_primal,
     dual_norm=_norm_l1_dual,
     mu=0,
+    proj_tol=None,
 ):
     r"""SPGL1 solver.
 
@@ -839,6 +841,11 @@ def spgl1(
         augmented with Tikhonov regularization, modifying the objective to
         ``f = 0.5*||r||^2 + 0.5*mu*||x||^2`` and the gradient to
         ``g = -A'*r + mu*x``. Default is 0 (no regularization).
+    proj_tol : float, optional
+        Projection tolerance. If the projection onto the L1 ball is inaccurate
+        (i.e., ``||x||_1 > tau + proj_tol``), the solver exits with an error.
+        If None (default), set to ``opt_tol``. This check helps detect
+        numerical issues with the projection operation.
 
     Returns
     -------
@@ -867,7 +874,9 @@ def spgl1(
            ``5``: error: too many iterations,
            ``6``: error: linesearch failed,
            ``7``: error: found suboptimal BP solution,
-           ``8``: error: too many matrix-vector products
+           ``8``: error: too many matrix-vector products,
+           ``9``: found a possible active set,
+           ``10``: error: projection failed (inaccurate)
 
         ``niters``, number of iterations
 
@@ -917,6 +926,8 @@ def spgl1(
     max_line_errors = 10  # Maximum number of line-search failures.
     piv_tol = 1e-12  # Threshold for significant Newton step.
     max_matvec = max(3, max_matvec)  # Max number of allowed matvec/rmatvec.
+    if proj_tol is None:
+        proj_tol = opt_tol  # Default projection tolerance to optimality tolerance
 
     # Initialize local variables.
     niters = 0  # Total SPGL1 iterations.
@@ -1280,6 +1291,15 @@ def spgl1(
                         )
                         max_line_errors -= 1
 
+            # Ensure that the projection is accurate
+            if primal_norm(x, weights) > tau + proj_tol:
+                x = xold.copy()
+                f = fold
+                g = gold.copy()
+                r = rold.copy()
+                stat = EXIT_PROJECTION
+                break
+
             # Subspace minimization (only if active-set change is small).
             if subspace_min:
                 start_time_matvec = time.time()
@@ -1439,6 +1459,8 @@ def spgl1(
             _printf(fid, "EXIT -- Maximum matrix-vector operations reached")
         elif stat == EXIT_ACTIVE_SET:
             _printf(fid, "EXIT -- Found a possible active set")
+        elif stat == EXIT_PROJECTION:
+            _printf(fid, "ERROR EXIT -- Projection failed (inaccurate)")
         else:
             _printf(fid, "SPGL1 ERROR: Unknown termination condition")
         _printf(fid, "")
