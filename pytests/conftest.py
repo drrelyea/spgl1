@@ -86,22 +86,45 @@ def call_octave_function(func_name, *args, **kwargs):
             args{{i}} = eval(['arg' num2str(i-1)]);
         end
 
+        % Helper function to remove function handles from structs
+        function s_clean = clean_struct(s)
+            if ~isstruct(s)
+                s_clean = s;
+                return;
+            end
+            s_clean = s;
+            fields = fieldnames(s);
+            for i = 1:length(fields)
+                if isa(s.(fields{{i}}), 'function_handle')
+                    s_clean = rmfield(s_clean, fields{{i}});
+                elseif isstruct(s.(fields{{i}}))
+                    s_clean.(fields{{i}}) = clean_struct(s.(fields{{i}}));
+                end
+            end
+        end
+
         % Handle different number of outputs
         if {nargout} == 1
             out1 = {func_name}(args{{:}});
+            out1 = clean_struct(out1);
             outputs = {{out1}};
         elseif {nargout} == 2
             [out1, out2] = {func_name}(args{{:}});
+            out1 = clean_struct(out1);
+            out2 = clean_struct(out2);
             outputs = {{out1, out2}};
         elseif {nargout} == 3
             [out1, out2, out3] = {func_name}(args{{:}});
+            out1 = clean_struct(out1);
+            out2 = clean_struct(out2);
+            out3 = clean_struct(out3);
             outputs = {{out1, out2, out3}};
         elseif {nargout} == 4
             [out1, out2, out3, out4] = {func_name}(args{{:}});
-            % Remove function handles from struct outputs (e.g., spgl1 info)
-            if isstruct(out4) && isfield(out4, 'options')
-                out4.options = struct();  % Replace with empty struct
-            end
+            out1 = clean_struct(out1);
+            out2 = clean_struct(out2);
+            out3 = clean_struct(out3);
+            out4 = clean_struct(out4);
             outputs = {{out1, out2, out3, out4}};
         else
             error('nargout > 4 not supported');

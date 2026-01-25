@@ -522,7 +522,7 @@ def norm_l12nn_project(g, x, weights, tau):
     return _norm_l12_project(g, xx, weights, tau)
 
 
-def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau):
+def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau, mu=0):
     """Projected backtracking linesearch.
 
     On entry, g is the (possibly scaled) steepest descent direction.
@@ -545,6 +545,8 @@ def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau):
         Weights ``W`` in ``||Wx||_1``
     tau : float, optional
         Projection radium
+    mu : float, optional
+        Tikhonov regularization parameter
 
     Returns
     -------
@@ -585,6 +587,8 @@ def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau):
         rnew = b - A.matvec(xnew)
         timematprod += time.time() - start_time_matprod
         fnew = np.abs(np.conj(rnew).dot(rnew)) / 2.0
+        if mu > 0:
+            fnew = fnew + (mu / 2.0) * np.abs(np.dot(np.conj(xnew), xnew))
         s = xnew - x
         gts = scale * np.real(np.dot(np.conj(g), s))
 
@@ -616,7 +620,7 @@ def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau):
     return fnew, xnew, rnew, niters, step, err, timeproject, timematprod
 
 
-def _spg_line(f, x, d, gtd, fmax, A, b):
+def _spg_line(f, x, d, gtd, fmax, A, b, mu=0):
     """Non-monotone linesearch.
 
     Parameters
@@ -635,6 +639,8 @@ def _spg_line(f, x, d, gtd, fmax, A, b):
         Operator
     b : ndarray
         Data
+    mu : float, optional
+        Tikhonov regularization parameter
 
     Returns
     -------
@@ -665,6 +671,8 @@ def _spg_line(f, x, d, gtd, fmax, A, b):
         rnew = b - A.matvec(xnew)
         timematprod += time.time() - start_time_matprod
         fnew = abs(np.conj(rnew).dot(rnew)) / 2.0
+        if mu > 0:
+            fnew = fnew + (mu / 2.0) * abs(np.dot(np.conj(xnew), xnew))
 
         # Check exit conditions.
         if fnew < fmax + gamma * step * gtd:  # Sufficient descent condition.
@@ -753,6 +761,7 @@ def spgl1(
     project=_norm_l1_project,
     primal_norm=_norm_l1_primal,
     dual_norm=_norm_l1_dual,
+    mu=0,
 ):
     r"""SPGL1 solver.
 
@@ -825,6 +834,11 @@ def spgl1(
         Primal norm evaluation fun
     dual_norm : func, optional
          Dual norm eval function
+    mu : float, optional
+        Tikhonov regularization parameter. When ``mu > 0``, the problem is
+        augmented with Tikhonov regularization, modifying the objective to
+        ``f = 0.5*||r||^2 + 0.5*mu*||x||^2`` and the gradient to
+        ``g = -A'*r + mu*x``. Default is 0 (no regularization).
 
     Returns
     -------
@@ -1024,6 +1038,9 @@ def spgl1(
     g = -A.rmatvec(r)  # g = -A'r
     time_matprod += time.time() - start_time_matvec
     f = np.linalg.norm(r) ** 2 / 2.0
+    if mu > 0:
+        f = f + (mu / 2.0) * np.dot(x, x)
+        g = g + mu * x
     nprodA += 1
     nprodAt += 1
 
@@ -1049,7 +1066,11 @@ def spgl1(
 
         # Compute quantities needed for log and exit conditions.
         gnorm = dual_norm(-g, weights)
-        rnorm = np.linalg.norm(r)
+        if mu == 0:
+            rnorm = np.linalg.norm(r)
+        else:
+            # Augmented residual: sqrt(||r||^2 + mu*||x||^2)
+            rnorm = np.sqrt(2.0 * f)
         gap = np.dot(np.conj(r), r - b) + tau * gnorm
         rgap = abs(gap) / max(1.0, f)
         aerror1 = rnorm - sigma
@@ -1119,6 +1140,9 @@ def spgl1(
                     time_matprod += time.time() - start_time_matvec
 
                     f = np.linalg.norm(r) ** 2 / 2.0
+                    if mu > 0:
+                        f = f + (mu / 2.0) * np.dot(x, x)
+                        g = g + mu * x
                     nprodA += 1
                     nprodAt += 1
 
@@ -1211,7 +1235,7 @@ def spgl1(
                 lnerr,
                 time_project_curvy,
                 time_matprod_curvy,
-            ) = _spg_line_curvy(x, gstep * g, max(last_fv), A, b, project, weights, tau)
+            ) = _spg_line_curvy(x, gstep * g, max(last_fv), A, b, project, weights, tau, mu)
             time_project += time_project_curvy
             time_matprod += time_matprod_curvy
             nprodA += niter_line + 1
@@ -1230,7 +1254,7 @@ def spgl1(
                 time_project += time.time() - start_time_project
                 gtd = np.dot(np.conj(g), dx)
                 f, x, r, niter_line, lnerr, time_matprod = _spg_line(
-                    f, x, dx, gtd, max(last_fv), A, b
+                    f, x, dx, gtd, max(last_fv), A, b, mu
                 )
                 time_matprod += time_matprod
                 nprodA += niter_line + 1
@@ -1313,6 +1337,8 @@ def spgl1(
                         r = b - A.matvec(x)
                         time_matprod += time.time() - start_time_matvec
                         f = abs(np.dot(np.conj(r), r)) / 2.0
+                        if mu > 0:
+                            f = f + (mu / 2.0) * abs(np.dot(np.conj(x), x))
                         subspace = True
                         nprodA += 1
 
@@ -1363,8 +1389,13 @@ def spgl1(
         r = b - A.matvec(x)
         g = -A.rmatvec(r)
         time_matprod += time.time() - start_time_matvec
+        if mu > 0:
+            g = g + mu * x
         gnorm = dual_norm(g, weights)
-        rnorm = np.linalg.norm(r)
+        if mu == 0:
+            rnorm = np.linalg.norm(r)
+        else:
+            rnorm = np.sqrt(np.dot(r, r) + mu * np.dot(x, x))
         nprodA += 1
         nprodAt += 1
 
