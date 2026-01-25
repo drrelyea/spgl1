@@ -26,6 +26,7 @@ EXIT_SUBOPTIMAL_BP = 7
 EXIT_MATVEC_LIMIT = 8
 EXIT_ACTIVE_SET = 9
 EXIT_PROJECTION = 10
+EXIT_RUNTIME = 11
 EXIT_CONVERGED_spgline = 0
 EXIT_ITERATIONS_spgline = 1
 EXIT_NODESCENT_spgline = 2
@@ -768,6 +769,7 @@ def spgl1(
     rootfind_tol=0.5,
     relgap_min_f=1.0,
     relgap_min_r=1.0,
+    max_runtime=np.inf,
 ):
     r"""SPGL1 solver.
 
@@ -865,6 +867,10 @@ def spgl1(
     relgap_min_r : float, optional
         Minimum relative gap for residual norm. Used in relative error
         calculations. Default is 1.0.
+    max_runtime : float, optional
+        Maximum runtime in seconds. The solver will exit with EXIT_RUNTIME
+        if this limit is exceeded. Default is np.inf (no limit).
+        The runtime is checked adaptively to minimize overhead.
 
     Returns
     -------
@@ -895,7 +901,8 @@ def spgl1(
            ``7``: error: found suboptimal BP solution,
            ``8``: error: too many matrix-vector products,
            ``9``: found a possible active set,
-           ``10``: error: projection failed (inaccurate)
+           ``10``: error: projection failed (inaccurate),
+           ``11``: error: maximum runtime exceeded
 
         ``niters``, number of iterations
 
@@ -966,6 +973,7 @@ def spgl1(
     subspace = False  # Flag if did subspace min in current itn.
     stepg = 1  # Step length for projected gradient.
     test_updatetau = False  # Previous step did not update tau
+    runtime_check_every = 1  # Check runtime every # iterations
 
     # Determine initial x and see if problem is complex
     realx = np.isreal(A).all() and np.isreal(b).all()
@@ -1252,6 +1260,18 @@ def spgl1(
         # Too many iterations and not converged.
         if not stat and niters >= iter_lim:
             stat = EXIT_ITERATIONS
+
+        # Check runtime limit (adaptive frequency to minimize overhead)
+        if not stat and niters % runtime_check_every == 0:
+            runtime = time.time() - start_time
+            # Adjust check frequency: aim to check every 0.5 seconds
+            # Allow increases up to 10x, minimum every iteration
+            if niters > 0 and runtime > 0:
+                runtime_check_every = max(
+                    1, min(10 * runtime_check_every, int(0.5 * niters / runtime))
+                )
+            if runtime > max_runtime:
+                stat = EXIT_RUNTIME
 
         # Print log, update history and act on exit conditions.
         if verbosity >= 2 and (
@@ -1549,6 +1569,8 @@ def spgl1(
             _printf(fid, "EXIT -- Found a possible active set")
         elif stat == EXIT_PROJECTION:
             _printf(fid, "ERROR EXIT -- Projection failed (inaccurate)")
+        elif stat == EXIT_RUNTIME:
+            _printf(fid, "ERROR EXIT -- Maximum runtime exceeded")
         else:
             _printf(fid, "SPGL1 ERROR: Unknown termination condition")
         _printf(fid, "")
