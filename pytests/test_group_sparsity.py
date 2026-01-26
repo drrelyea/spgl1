@@ -162,13 +162,25 @@ class TestGroupSparseBasics:
         x_true[0:20] = np.random.randn(20)
         b = A @ x_true  # Exact, no noise
 
-        x, r, g, info = spg_group(A, b, groups, sigma=0, opt_tol=1e-4, iter_lim=500)
+        # BP with group sparsity can be challenging, so use tight opt_tol
+        x, r, g, info = spg_group(A, b, groups, sigma=0, opt_tol=1e-5, iter_lim=1000)
 
-        # Should solve BP successfully
+        # Should run and produce valid solution
         assert info['niters'] > 0
         assert np.all(np.isfinite(x))
-        # Residual should be small (may not be exact due to tolerances)
-        assert np.linalg.norm(r) < 1.0
+
+        # Check that constraint is satisfied (BP aims for Ax=b)
+        # Residual should be smaller than without noise, but may not be exact
+        # due to group sparsity constraint making problem harder
+        rnorm = np.linalg.norm(r)
+        assert rnorm < 0.5, f"BP residual too large: {rnorm:.6e}"
+
+        # Solution should be group-sparse
+        group1_norm = np.linalg.norm(x[0:20])
+        total_norm = np.linalg.norm(x)
+        if total_norm > 1e-10:
+            assert group1_norm > 0.5 * total_norm, \
+                "Solution should have most energy in first group"
 
     def test_spg_group_unequal_groups(self):
         """Test spg_group with unequal group sizes."""
@@ -206,12 +218,46 @@ class TestGroupSparseBasics:
         assert info['niters'] > 0
         assert np.all(np.isfinite(x))
 
+    def test_spg_group_complex_valued(self):
+        """Test spg_group with complex-valued signals."""
+        np.random.seed(709)
+        A = np.random.randn(30, 60) + 1j * np.random.randn(30, 60)
+        groups = np.array([1]*20 + [2]*20 + [3]*20)
+
+        x_true = np.zeros(60, dtype=complex)
+        x_true[0:20] = np.random.randn(20) + 1j * np.random.randn(20)
+        b = A @ x_true + 0.01 * (np.random.randn(30) + 1j * np.random.randn(30))
+        sigma = 0.1 * np.linalg.norm(b)
+
+        x, r, g, info = spg_group(A, b, groups, sigma=sigma)
+
+        # Should handle complex values
+        assert info['niters'] > 0
+        assert np.all(np.isfinite(x))
+        assert np.iscomplexobj(x)
+
+    def test_spg_group_single_group(self):
+        """Test spg_group with only one group (degenerate case)."""
+        np.random.seed(710)
+        A = np.random.randn(30, 60)
+        groups = np.ones(60, dtype=int)  # All elements in one group
+
+        x_true = np.random.randn(60)
+        b = A @ x_true + 0.01 * np.random.randn(30)
+        sigma = 0.1 * np.linalg.norm(b)
+
+        # Should handle single group (degenerates to L2 norm minimization)
+        x, r, g, info = spg_group(A, b, groups, sigma=sigma)
+
+        assert info['niters'] > 0
+        assert np.all(np.isfinite(x))
+
 
 @pytest.mark.skipif(not octave_available(), reason="Octave not available")
 class TestGroupSparseVsOctave:
     """Compare spg_group with MATLAB/Octave implementation."""
 
-    def test_matches_octave_simple(self):
+    def test_matches_octave_simple(self, octave, matlab_spgl_path):
         """Test that Python matches Octave on simple problem."""
         np.random.seed(705)
         A = np.random.randn(30, 60)
@@ -226,26 +272,29 @@ class TestGroupSparseVsOctave:
         x_py, r_py, g_py, info_py = spg_group(A, b, groups, sigma=sigma)
 
         # Octave
-        from oct2py import Oct2Py
-        oc = Oct2Py()
-        oc.addpath('/Users/relyea/code/matlab_spgl')
+        result = octave("spg_group", A, b, groups, sigma, nargout=4, timeout=30)
+        assert result['success'], f"Octave failed: {result.get('error')}"
 
-        x_oct, r_oct, g_oct, info_oct = oc.spg_group(A, b, groups, sigma, nout=4)
+        x_oct = result['outputs'][0].flatten()
+        r_oct = result['outputs'][1].flatten()
+        g_oct = result['outputs'][2].flatten()
+        info_oct = result['outputs'][3]
 
         # Solutions should be similar (not identical due to solver paths)
         # Check objective values match
-        assert abs(info_py['rnorm'] - float(info_oct['rNorm'])) < 1e-6, \
-            f"Python rnorm={info_py['rnorm']}, Octave rnorm={info_oct['rNorm']}"
+        rnorm_oct = float(np.asarray(info_oct['rNorm']).flat[0])
+        assert abs(info_py['rnorm'] - rnorm_oct) < 1e-6, \
+            f"Python rnorm={info_py['rnorm']}, Octave rnorm={rnorm_oct}"
 
         # Check solutions are correlated
         if np.linalg.norm(x_py) > 1e-10 and np.linalg.norm(x_oct) > 1e-10:
             x_py_norm = x_py / np.linalg.norm(x_py)
-            x_oct_norm = x_oct.flatten() / np.linalg.norm(x_oct)
+            x_oct_norm = x_oct / np.linalg.norm(x_oct)
             correlation = np.abs(np.dot(x_py_norm, x_oct_norm))
             assert correlation > 0.9, \
                 f"Solutions not correlated: {correlation}"
 
-    def test_matches_octave_bp(self):
+    def test_matches_octave_bp(self, octave, matlab_spgl_path):
         """Test that Python matches Octave on BP problem."""
         np.random.seed(706)
         A = np.random.randn(25, 50)
@@ -259,15 +308,18 @@ class TestGroupSparseVsOctave:
         x_py, r_py, g_py, info_py = spg_group(A, b, groups, sigma=0)
 
         # Octave
-        from oct2py import Oct2Py
-        oc = Oct2Py()
-        oc.addpath('/Users/relyea/code/matlab_spgl')
+        result = octave("spg_group", A, b, groups, 0, nargout=4, timeout=30)
+        assert result['success'], f"Octave failed: {result.get('error')}"
 
-        x_oct, r_oct, g_oct, info_oct = oc.spg_group(A, b, groups, 0, nout=4)
+        x_oct = result['outputs'][0].flatten()
+        r_oct = result['outputs'][1].flatten()
+        g_oct = result['outputs'][2].flatten()
+        info_oct = result['outputs'][3]
 
         # BP should match very closely
-        assert abs(info_py['rnorm'] - float(info_oct['rNorm'])) < 1e-8
-        assert np.allclose(x_py, x_oct.flatten(), rtol=1e-6, atol=1e-8)
+        rnorm_oct = float(np.asarray(info_oct['rNorm']).flat[0])
+        assert abs(info_py['rnorm'] - rnorm_oct) < 1e-8
+        assert np.allclose(x_py, x_oct, rtol=1e-6, atol=1e-8)
 
 
 class TestBackwardCompatibility:
