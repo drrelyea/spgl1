@@ -368,6 +368,101 @@ def _norm_l12_project(g, x, weights, tau):
     return xx.flatten()
 
 
+def _norm_groupl2_primal(groups, x, weights):
+    """Group L2 primal norm
+
+    Parameters
+    ----------
+    groups : sparse matrix
+        Binary matrix where groups(i,j) = 1 if element j is in group i
+    x : ndarray
+        Input array
+    weights : {float, ndarray}
+        Weights for each group
+
+    Returns
+    -------
+    p : float
+        Group L2 norm: sum_k weights_k * ||x_k||_2
+    """
+    if np.iscomplexobj(x):
+        # For complex: groups * abs(x).^2
+        group_norms = np.sqrt(np.asarray(groups @ (np.abs(x)**2)).flatten())
+    else:
+        # For real: groups * x.^2
+        group_norms = np.sqrt(np.asarray(groups @ (x**2)).flatten())
+
+    p = np.sum(weights * group_norms)
+    return p
+
+
+def _norm_groupl2_dual(groups, x, weights):
+    """Group L2 dual norm
+
+    Parameters
+    ----------
+    groups : sparse matrix
+        Binary matrix where groups(i,j) = 1 if element j is in group i
+    x : ndarray
+        Input array
+    weights : {float, ndarray}
+        Weights for each group
+
+    Returns
+    -------
+    d : float
+        Dual norm: max_k ||x_k||_2 / weights_k
+    """
+    if np.iscomplexobj(x):
+        group_norms = np.sqrt(np.asarray(groups @ (np.abs(x)**2)).flatten())
+    else:
+        group_norms = np.sqrt(np.asarray(groups @ (x**2)).flatten())
+
+    d = np.linalg.norm(group_norms / weights, np.inf)
+    return d
+
+
+def _norm_groupl2_project(groups, x, weights, tau):
+    """Project onto group L2 ball
+
+    Parameters
+    ----------
+    groups : sparse matrix
+        Binary matrix where groups(i,j) = 1 if element j is in group i
+    x : ndarray
+        Input array
+    weights : {float, ndarray}
+        Weights for each group
+    tau : float
+        Projection radius
+
+    Returns
+    -------
+    x_proj : ndarray
+        Projected vector
+    """
+    # Compute L2 norms of each group
+    if np.iscomplexobj(x):
+        xa = np.sqrt(np.asarray(groups @ (np.abs(x)**2)).flatten())
+    else:
+        xa = np.sqrt(np.asarray(groups @ (x**2)).flatten())
+
+    # Project group norms onto L1 ball
+    idx = xa < np.spacing(1)
+    xc = oneprojector(xa, weights, tau)
+
+    # Scale original vector by projection scaling factors
+    xc = xc / (xa + 1e-20)  # Avoid division by zero
+    xc[idx] = 0
+
+    # Apply scaling: multiply each element by its group's scale factor
+    # groups' * xc gives the scale factor for each element
+    scale_factors = np.asarray(groups.T @ xc).flatten()
+    x_proj = x * scale_factors
+
+    return x_proj
+
+
 def norm_l1nn_primal(x, weights):
     """Non-negative L1 gauge function
 
@@ -1823,3 +1918,126 @@ def spg_mmv(A, B, sigma=0, **kwargs):
     g = g.reshape(n, groups)
 
     return x, r, g, info
+
+
+def spg_group(A, b, groups, sigma=0, **kwargs):
+    """Group sparsity problem.
+
+    ``spg_group`` is designed to solve the jointly-sparse basis pursuit
+    denoise (BPDN) problem::
+
+        (BPDN)  minimize  sum_k ||x_{GROUPS == k}||_2
+                subject to  ||A x - b||_2 <= sigma
+
+    where ``A`` is an M-by-N matrix, ``b`` is an M-vector, ``groups`` is an
+    N-vector containing the group number for each element of x, and ``sigma``
+    is a nonnegative scalar.
+
+    Parameters
+    ----------
+    A : {sparse matrix, ndarray, LinearOperator}
+        Representation of an M-by-N matrix. It is required that
+        the linear operator can produce ``Ax`` and ``A^T x``.
+    b : array_like, shape (m,)
+        Right-hand side vector.
+    groups : array_like, shape (n,)
+        Group assignments for each element. Each element contains the
+        group number (starting from any value). Elements with the same
+        group number belong to the same group.
+    sigma : float, optional
+        BPDN threshold. If sigma=0 or sigma=None, solves basis pursuit (BP)
+        problem where the constraint is Ax = b.
+    kwargs : dict, optional
+        Additional input parameters (refer to :func:`spgl1.spgl1` for a list
+        of possible parameters)
+
+    Returns
+    -------
+    x : array_like, shape (n,)
+        Inverted model
+    r : array_like, shape (m,)
+        Final residual
+    g : array_like, shape (n,)
+        Final gradient
+    info : dict
+        See spgl1.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from spgl1 import spg_group
+    >>> # Create problem with 3 groups
+    >>> A = np.random.randn(50, 100)
+    >>> groups = np.array([1]*30 + [2]*40 + [3]*30)  # 3 groups
+    >>> x_true = np.zeros(100)
+    >>> x_true[0:30] = np.random.randn(30)  # Only first group is nonzero
+    >>> b = A @ x_true
+    >>> x, r, g, info = spg_group(A, b, groups, sigma=0.01)
+
+    Notes
+    -----
+    The group L2 norm promotes sparsity at the group level, meaning entire
+    groups of variables tend to be zero or non-zero together. This is useful
+    for problems where variables naturally form groups (e.g., pixels in an
+    image patch, coefficients in a wavelet decomposition).
+
+    """
+    # Preprocess groups: normalize numbering and create sparse matrix
+    g = np.asarray(groups).flatten()
+    n = len(g)
+
+    # Get unique group indices and create mapping
+    # unique returns: unique values, indices into unique, inverse mapping
+    gidx, idx1, idx2 = np.unique(g, return_index=True, return_inverse=True)
+    num_groups = len(gidx)
+
+    # Create sparse binary matrix: groups(i, j) = 1 if element j is in group i
+    from scipy.sparse import csr_matrix
+    row_indices = idx2  # Which group each element belongs to
+    col_indices = np.arange(n)  # Element index
+    data = np.ones(n)
+    groups_matrix = csr_matrix(
+        (data, (row_indices, col_indices)),
+        shape=(num_groups, n)
+    )
+
+    # Set projection-specific functions
+    _primal_norm = (
+        _norm_groupl2_primal
+        if "primal_norm" not in kwargs.keys()
+        else kwargs["primal_norm"]
+    )
+    _dual_norm = (
+        _norm_groupl2_dual
+        if "dual_norm" not in kwargs.keys()
+        else kwargs["dual_norm"]
+    )
+    _project = (
+        _norm_groupl2_project
+        if "project" not in kwargs.keys()
+        else kwargs["project"]
+    )
+    kwargs.pop("primal_norm", None)
+    kwargs.pop("dual_norm", None)
+    kwargs.pop("project", None)
+
+    # Create lambdas that pass the groups matrix
+    project = lambda x, weight, tau: _project(groups_matrix, x, weight, tau)
+    primal_norm = lambda x, weight: _primal_norm(groups_matrix, x, weight)
+    dual_norm = lambda x, weight: _dual_norm(groups_matrix, x, weight)
+
+    tau = 0
+    x0 = None
+    x, r, g_grad, info = spgl1(
+        A,
+        b,
+        tau,
+        sigma,
+        x0,
+        project=project,
+        primal_norm=primal_norm,
+        dual_norm=dual_norm,
+        **kwargs
+    )
+
+    return x, r, g_grad, info
