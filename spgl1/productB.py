@@ -1,5 +1,4 @@
-"""
-Coordinate transformation for L-BFGS hybrid mode.
+"""Coordinate transformation for L-BFGS hybrid mode.
 
 This module implements the productBMex transformation from MATLAB SPGL1,
 which is used for efficient quasi-Newton updates on the support set.
@@ -7,22 +6,35 @@ which is used for efficient quasi-Newton updates on the support set.
 The transformation maps between global domain and coefficient space,
 enabling L-BFGS Hessian approximation without forming full matrices.
 """
+from typing import Any, Callable
+
 import numpy as np
+from numpy.typing import NDArray
+
+
+FloatArray = NDArray[np.floating[Any]]
 
 try:
     from numba import jit
-    HAS_NUMBA = True
+    HAS_NUMBA: bool = True
 except ImportError:
     # Fallback: create a no-op decorator
     HAS_NUMBA = False
-    def jit(*args, **kwargs):
-        def decorator(func):
+
+    def jit(
+        *args: Any, **kwargs: Any
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             return func
         return decorator
 
 
 @jit(nopython=True)
-def _product_b_forward(x, sqrt1, sqrt2):
+def _product_b_forward(
+    x: FloatArray,
+    sqrt1: FloatArray,
+    sqrt2: FloatArray,
+) -> FloatArray:
     """Forward mode: d -> d+1 dimensions.
 
     Computes:
@@ -45,13 +57,13 @@ def _product_b_forward(x, sqrt1, sqrt2):
     y : ndarray
         Transformed vector (d+1,)
     """
-    d = len(x)
-    y = np.zeros(d + 1)
+    d: int = len(x)
+    y: FloatArray = np.zeros(d + 1)
 
-    t = 0.0
+    t: float = 0.0
     # Process in reverse order: d-1, d-2, ..., 1, 0
     for i in range(d - 1, -1, -1):
-        xi = x[i]
+        xi: float = x[i]
         y[i + 1] = t + sqrt2[i] * xi
         t -= sqrt1[i] * xi
 
@@ -60,7 +72,11 @@ def _product_b_forward(x, sqrt1, sqrt2):
 
 
 @jit(nopython=True)
-def _product_b_transpose(x, sqrt1, sqrt2):
+def _product_b_transpose(
+    x: FloatArray,
+    sqrt1: FloatArray,
+    sqrt2: FloatArray,
+) -> FloatArray:
     """Transpose mode: d+1 -> d dimensions.
 
     Computes:
@@ -82,11 +98,11 @@ def _product_b_transpose(x, sqrt1, sqrt2):
     y : ndarray
         Transformed vector (d,)
     """
-    d = len(x) - 1
-    y = np.zeros(d)
+    d: int = len(x) - 1
+    y: FloatArray = np.zeros(d)
 
-    t = 0.0
-    xi = x[0]
+    t: float = 0.0
+    xi: float = x[0]
 
     # Process in forward order: 0, 1, 2, ..., d-1
     for i in range(d):
@@ -97,7 +113,12 @@ def _product_b_transpose(x, sqrt1, sqrt2):
     return y
 
 
-def product_b(x, transpose, sqrt1, sqrt2):
+def product_b(
+    x: FloatArray,
+    transpose: int,
+    sqrt1: FloatArray,
+    sqrt2: FloatArray,
+) -> FloatArray:
     """Coordinate transformation for L-BFGS support set operations.
 
     This function performs a specialized linear transformation used by
@@ -157,7 +178,7 @@ def product_b(x, transpose, sqrt1, sqrt2):
         return _product_b_transpose(x, sqrt1, sqrt2)
 
 
-def compute_sqrt_vectors(d):
+def compute_sqrt_vectors(d: int) -> tuple[FloatArray, FloatArray]:
     """Compute sqrt1 and sqrt2 vectors for productB transformation.
 
     These vectors are used by product_b() for efficient coordinate
@@ -192,7 +213,7 @@ def compute_sqrt_vectors(d):
     >>> sqrt2.shape
     (5,)
     """
-    i = np.arange(1, d + 1, dtype=float)
-    sqrt1 = np.sqrt(1.0 / (i * (i + 1.0)))
-    sqrt2 = np.sqrt(i / (i + 1.0))
+    i: FloatArray = np.arange(1, d + 1, dtype=float)
+    sqrt1: FloatArray = np.sqrt(1.0 / (i * (i + 1.0)))
+    sqrt2: FloatArray = np.sqrt(i / (i + 1.0))
     return sqrt1, sqrt2

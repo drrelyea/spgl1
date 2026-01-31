@@ -1,46 +1,68 @@
+"""SPGL1: Spectral Projected Gradient for L1 minimization.
+
+This module implements the SPGL1 algorithm for solving basis pursuit (BP),
+basis pursuit denoise (BPDN), and LASSO problems.
+"""
+
 from __future__ import absolute_import, division
 
 import logging
 import time
+from typing import Any, Callable, TextIO, Union
 
 import numpy as np
-from scipy.sparse import spdiags
+from numpy.typing import ArrayLike, NDArray
+from scipy.sparse import spdiags, spmatrix
 from scipy.sparse.linalg import LinearOperator, aslinearoperator, lsqr
 
 logger = logging.getLogger(__name__)
 
+# Type aliases
+FloatArray = NDArray[np.floating[Any]]
+ComplexArray = NDArray[np.complexfloating[Any, Any]]
+NumericArray = Union[FloatArray, ComplexArray]
+WeightsType = Union[float, FloatArray]
+ProjectFunc = Callable[[NumericArray, WeightsType, float], NumericArray]
+NormFunc = Callable[[NumericArray, WeightsType], float]
+
 # Size of info vector in case of infinite iterations
-_allocSize = 10000
+_allocSize: int = 10000
 
 # Machine epsilon
-_eps = np.spacing(1)
+_eps: float = np.spacing(1)
 
 # Exit conditions (constants).
-EXIT_ROOT_FOUND = 1
-EXIT_BPSOL_FOUND = 2
-EXIT_LEAST_SQUARES = 3
-EXIT_OPTIMAL = 4
-EXIT_ITERATIONS = 5
-EXIT_LINE_ERROR = 6
-EXIT_SUBOPTIMAL_BP = 7
-EXIT_MATVEC_LIMIT = 8
-EXIT_ACTIVE_SET = 9
-EXIT_PROJECTION = 10
-EXIT_RUNTIME = 11
-EXIT_CONVERGED_spgline = 0
-EXIT_ITERATIONS_spgline = 1
-EXIT_NODESCENT_spgline = 2
+EXIT_ROOT_FOUND: int = 1
+EXIT_BPSOL_FOUND: int = 2
+EXIT_LEAST_SQUARES: int = 3
+EXIT_OPTIMAL: int = 4
+EXIT_ITERATIONS: int = 5
+EXIT_LINE_ERROR: int = 6
+EXIT_SUBOPTIMAL_BP: int = 7
+EXIT_MATVEC_LIMIT: int = 8
+EXIT_ACTIVE_SET: int = 9
+EXIT_PROJECTION: int = 10
+EXIT_RUNTIME: int = 11
+EXIT_CONVERGED_spgline: int = 0
+EXIT_ITERATIONS_spgline: int = 1
+EXIT_NODESCENT_spgline: int = 2
 
 
 # private classes
 class _LSQRprod(LinearOperator):
     """LSQR operator.
 
-    This operator is used to augument the spgl1 operator during subspace
+    This operator is used to augment the spgl1 operator during subspace
     minimization via LSQR.
     """
 
-    def __init__(self, A, nnz_idx, ebar, n):
+    def __init__(
+        self,
+        A: LinearOperator,
+        nnz_idx: NDArray[np.bool_],
+        ebar: NumericArray,
+        n: int,
+    ) -> None:
         self.A = A
         self.nnz_idd = nnz_idx
         self.ebar = ebar
@@ -49,7 +71,7 @@ class _LSQRprod(LinearOperator):
         self.shape = (A.shape[0], self.nbar)
         self.dtype = A.dtype
 
-    def _matvec(self, x):
+    def _matvec(self, x: NumericArray) -> NumericArray:
         y = np.zeros(self.n, dtype=x.dtype)
         y[self.nnz_idd] = x - (1.0 / self.nbar) * np.dot(
             np.dot(np.conj(self.ebar), x), self.ebar
@@ -57,7 +79,7 @@ class _LSQRprod(LinearOperator):
         z = self.A.matvec(y)
         return z
 
-    def _rmatvec(self, x):
+    def _rmatvec(self, x: NumericArray) -> NumericArray:
         y = self.A.rmatvec(x)
         z = y[self.nnz_idd] - (1.0 / self.nbar) * np.dot(
             np.dot(np.conj(self.ebar), y[self.nnz_idd]), self.ebar
@@ -74,7 +96,7 @@ class _blockdiag(LinearOperator):
     and the operator ``A`` is applied to each column of the vectors.
     """
 
-    def __init__(self, A, m, n, g):
+    def __init__(self, A: LinearOperator, m: int, n: int, g: int) -> None:
         self.m = m
         self.n = n
         self.g = g
@@ -83,27 +105,29 @@ class _blockdiag(LinearOperator):
         self.shape = (m * g, n * g)
         self.dtype = A.dtype
 
-    def _matvec(self, x):
+    def _matvec(self, x: NumericArray) -> NumericArray:
         x = x.reshape(self.n, self.g)
         y = self.A.matmat(x)
         return y.ravel()
 
-    def _rmatvec(self, x):
+    def _rmatvec(self, x: NumericArray) -> NumericArray:
         x = x.reshape(self.m, self.g)
         y = self.AH.matmat(x)
         return y.ravel()
 
 
 # private methods
-def _printf(fid, message):
-    """Print a message in file (fid=file ID) or on screen (fid=None)"""
+def _printf(fid: TextIO | None, message: str) -> None:
+    """Print a message in file (fid=file ID) or on screen (fid=None)."""
     if fid is None:
         print(message)
     else:
         fid.write(message)
 
 
-def _find_lambda_star(z, w, tau, mu):
+def _find_lambda_star(
+    z: FloatArray, w: FloatArray, tau: float, mu: float
+) -> tuple[float, float]:
     """Solve the subproblem for dual objective computation with Tikhonov regularization.
 
     Solves:
@@ -135,7 +159,7 @@ def _find_lambda_star(z, w, tau, mu):
 
     if tau == 0:
         # Special case: tau=0 means we want ||x||_1 = 0
-        lambda_star = np.max(lambdak)
+        lambda_star = float(np.max(lambdak))
         obj = 0.0
     else:
         # Sort breakpoints in descending order
@@ -177,7 +201,7 @@ def _find_lambda_star(z, w, tau, mu):
     return obj, lambda_star
 
 
-def _oneprojector_i(b, tau):
+def _oneprojector_i(b: FloatArray, tau: float) -> FloatArray:
     n = b.size
     x = np.zeros(n, dtype=b.dtype)
     bNorm = np.linalg.norm(b, 1)
@@ -204,7 +228,7 @@ def _oneprojector_i(b, tau):
     return x
 
 
-def _oneprojector_d(b, d, tau):
+def _oneprojector_d(b: FloatArray, d: FloatArray, tau: float) -> FloatArray:
     n = b.size
     x = np.zeros(n, dtype=b.dtype)
 
@@ -234,7 +258,9 @@ def _oneprojector_d(b, d, tau):
     return x
 
 
-def _oneprojector_di(b, d, tau):
+def _oneprojector_di(
+    b: FloatArray, d: Union[float, FloatArray], tau: float
+) -> FloatArray:
     if np.isscalar(d):
         p = _oneprojector_i(b, tau / abs(d))
     else:
@@ -242,7 +268,9 @@ def _oneprojector_di(b, d, tau):
     return p
 
 
-def oneprojector(b, d, tau):
+def oneprojector(
+    b: NumericArray, d: Union[float, NumericArray], tau: float
+) -> NumericArray:
     """One projector.
 
     Projects b onto the (weighted) one-norm ball of radius tau.
@@ -294,8 +322,8 @@ def oneprojector(b, d, tau):
     return x
 
 
-def _norm_l1_primal(x, weights):
-    """L1 norm with weighted input vector
+def _norm_l1_primal(x: NumericArray, weights: WeightsType) -> float:
+    """L1 norm with weighted input vector.
 
     Parameters
     ----------
@@ -306,15 +334,15 @@ def _norm_l1_primal(x, weights):
 
     Returns
     -------
-    . : float
+    float
         L1 norm
 
     """
-    return np.linalg.norm(x * weights, 1)
+    return float(np.linalg.norm(x * weights, 1))
 
 
-def _norm_l1_dual(x, weights):
-    """L_inf norm with weighted input vector (dual to L1 norm)
+def _norm_l1_dual(x: NumericArray, weights: WeightsType) -> float:
+    """L_inf norm with weighted input vector (dual to L1 norm).
 
     Parameters
     ----------
@@ -325,15 +353,17 @@ def _norm_l1_dual(x, weights):
 
     Returns
     -------
-    . : float
+    float
         L_inf norm
 
     """
-    return np.linalg.norm(x / weights, np.inf)
+    return float(np.linalg.norm(x / weights, np.inf))
 
 
-def _norm_l1_project(x, weights, tau):
-    """Projection onto the one-norm ball
+def _norm_l1_project(
+    x: NumericArray, weights: WeightsType, tau: float
+) -> NumericArray:
+    """Projection onto the one-norm ball.
 
     Parameters
     ----------
@@ -346,7 +376,7 @@ def _norm_l1_project(x, weights, tau):
 
     Returns
     -------
-    xproj : float
+    xproj : ndarray
         Projected array
 
     """
@@ -362,8 +392,9 @@ def _norm_l1_project(x, weights, tau):
     return xproj
 
 
-def _norm_l12_primal(g, x, weights):
-    """L1 norm with weighted input vector with number of groups equal to g
+def _norm_l12_primal(g: int, x: NumericArray, weights: WeightsType) -> float:
+    """L1 norm with weighted input vector with number of groups equal to g.
+
     Parameters
     ----------
     g : int
@@ -372,6 +403,7 @@ def _norm_l12_primal(g, x, weights):
         Input array
     weights : {float, ndarray}, optional
         Weights
+
     Returns
     -------
     nrm : float
@@ -382,12 +414,13 @@ def _norm_l12_primal(g, x, weights):
     xx = xx.reshape(m, g)
     if np.iscomplexobj(xx):
         xx = np.abs(xx)
-    nrm = np.sum(weights * np.sqrt(np.sum(xx**2, axis=1)))
+    nrm = float(np.sum(weights * np.sqrt(np.sum(xx**2, axis=1))))
     return nrm
 
 
-def _norm_l12_dual(g, x, weights):
-    """L_inf norm with weighted input vector with number of groups equal to g
+def _norm_l12_dual(g: int, x: NumericArray, weights: WeightsType) -> float:
+    """L_inf norm with weighted input vector with number of groups equal to g.
+
     Parameters
     ----------
     g : int
@@ -396,6 +429,7 @@ def _norm_l12_dual(g, x, weights):
         Input array
     weights : {float, ndarray}, optional
         Weights
+
     Returns
     -------
     nrm : float
@@ -406,12 +440,15 @@ def _norm_l12_dual(g, x, weights):
     xx = xx.reshape(m, g)
     if np.iscomplexobj(xx):
         xx = np.abs(xx)
-    nrm = np.linalg.norm(np.sqrt(np.sum(xx**2, axis=1)) / weights, np.inf)
+    nrm = float(np.linalg.norm(np.sqrt(np.sum(xx**2, axis=1)) / weights, np.inf))
     return nrm
 
 
-def _norm_l12_project(g, x, weights, tau):
-    """Projection with number of groups equal to g
+def _norm_l12_project(
+    g: int, x: NumericArray, weights: WeightsType, tau: float
+) -> NumericArray:
+    """Projection with number of groups equal to g.
+
     Parameters
     ----------
     g : int
@@ -422,9 +459,10 @@ def _norm_l12_project(g, x, weights, tau):
         Weights
     tau : float
         Projection radius
+
     Returns
     -------
-    x : float
+    x : ndarray
         Projected array
     """
     m = x.size // g
@@ -442,8 +480,10 @@ def _norm_l12_project(g, x, weights, tau):
     return xx.flatten()
 
 
-def _norm_groupl2_primal(groups, x, weights):
-    """Group L2 primal norm
+def _norm_groupl2_primal(
+    groups: spmatrix, x: NumericArray, weights: WeightsType
+) -> float:
+    """Group L2 primal norm.
 
     Parameters
     ----------
@@ -461,17 +501,19 @@ def _norm_groupl2_primal(groups, x, weights):
     """
     if np.iscomplexobj(x):
         # For complex: groups * abs(x).^2
-        group_norms = np.sqrt(np.asarray(groups @ (np.abs(x)**2)).flatten())
+        group_norms = np.sqrt(np.asarray(groups @ (np.abs(x) ** 2)).flatten())
     else:
         # For real: groups * x.^2
         group_norms = np.sqrt(np.asarray(groups @ (x**2)).flatten())
 
-    p = np.sum(weights * group_norms)
+    p = float(np.sum(weights * group_norms))
     return p
 
 
-def _norm_groupl2_dual(groups, x, weights):
-    """Group L2 dual norm
+def _norm_groupl2_dual(
+    groups: spmatrix, x: NumericArray, weights: WeightsType
+) -> float:
+    """Group L2 dual norm.
 
     Parameters
     ----------
@@ -488,16 +530,18 @@ def _norm_groupl2_dual(groups, x, weights):
         Dual norm: max_k ||x_k||_2 / weights_k
     """
     if np.iscomplexobj(x):
-        group_norms = np.sqrt(np.asarray(groups @ (np.abs(x)**2)).flatten())
+        group_norms = np.sqrt(np.asarray(groups @ (np.abs(x) ** 2)).flatten())
     else:
         group_norms = np.sqrt(np.asarray(groups @ (x**2)).flatten())
 
-    d = np.linalg.norm(group_norms / weights, np.inf)
+    d = float(np.linalg.norm(group_norms / weights, np.inf))
     return d
 
 
-def _norm_groupl2_project(groups, x, weights, tau):
-    """Project onto group L2 ball
+def _norm_groupl2_project(
+    groups: spmatrix, x: NumericArray, weights: WeightsType, tau: float
+) -> NumericArray:
+    """Project onto group L2 ball.
 
     Parameters
     ----------
@@ -517,7 +561,7 @@ def _norm_groupl2_project(groups, x, weights, tau):
     """
     # Compute L2 norms of each group
     if np.iscomplexobj(x):
-        xa = np.sqrt(np.asarray(groups @ (np.abs(x)**2)).flatten())
+        xa = np.sqrt(np.asarray(groups @ (np.abs(x) ** 2)).flatten())
     else:
         xa = np.sqrt(np.asarray(groups @ (x**2)).flatten())
 
@@ -537,8 +581,8 @@ def _norm_groupl2_project(groups, x, weights, tau):
     return x_proj
 
 
-def norm_l1nn_primal(x, weights):
-    """Non-negative L1 gauge function
+def norm_l1nn_primal(x: NumericArray, weights: WeightsType) -> float:
+    """Non-negative L1 gauge function.
 
     Parameters
     ----------
@@ -556,12 +600,12 @@ def norm_l1nn_primal(x, weights):
     if np.any(x < 0):
         p = np.inf
     else:
-        p = np.linalg.norm(x * weights, 1)
+        p = float(np.linalg.norm(x * weights, 1))
     return p
 
 
-def norm_l1nn_dual(x, weights):
-    """Dual of non-negative L1 gauge function
+def norm_l1nn_dual(x: NumericArray, weights: WeightsType) -> float:
+    """Dual of non-negative L1 gauge function.
 
     Parameters
     ----------
@@ -578,12 +622,14 @@ def norm_l1nn_dual(x, weights):
     """
     xx = x.copy()
     xx[xx < 0] = 0
-    p = np.linalg.norm(xx / weights, np.inf)
+    p = float(np.linalg.norm(xx / weights, np.inf))
     return p
 
 
-def norm_l1nn_project(x, weights, tau):
-    """Projection onto the non-negative part of the one-norm ball
+def norm_l1nn_project(
+    x: NumericArray, weights: WeightsType, tau: float
+) -> NumericArray:
+    """Projection onto the non-negative part of the one-norm ball.
 
     Parameters
     ----------
@@ -596,7 +642,7 @@ def norm_l1nn_project(x, weights, tau):
 
     Returns
     -------
-    . : float
+    ndarray
         Projected array
 
     """
@@ -605,9 +651,8 @@ def norm_l1nn_project(x, weights, tau):
     return _norm_l1_project(xx, weights, tau)
 
 
-def norm_l12nn_primal(g, x, weights):
-    """Non-negative L1 norm with weighted input vector with number
-    of groups equal to g
+def norm_l12nn_primal(g: int, x: NumericArray, weights: WeightsType) -> float:
+    """Non-negative L1 norm with weighted input vector with number of groups equal to g.
 
     Parameters
     ----------
@@ -632,13 +677,12 @@ def norm_l12nn_primal(g, x, weights):
         xm = x.reshape(m, g)
         if np.iscomplexobj(x):
             xm = np.abs(xm)
-        nrm = np.sum(weights * np.sqrt(np.sum(xm**2, axis=1)))
+        nrm = float(np.sum(weights * np.sqrt(np.sum(xm**2, axis=1))))
     return nrm
 
 
-def norm_l12nn_dual(g, x, weights):
-    """Dual on non-legative L1L norm with weighted input vector
-    with number of groups equal to g
+def norm_l12nn_dual(g: int, x: NumericArray, weights: WeightsType) -> float:
+    """Dual on non-negative L1 norm with weighted input vector with number of groups equal to g.
 
     Parameters
     ----------
@@ -662,12 +706,14 @@ def norm_l12nn_dual(g, x, weights):
     if np.iscomplexobj(xx):
         xx = np.abs(xx)
     xx[xx < 0] = 0
-    nrm = np.linalg.norm(np.sqrt(np.sum(xx**2, axis=1)) / weights, np.inf)
+    nrm = float(np.linalg.norm(np.sqrt(np.sum(xx**2, axis=1)) / weights, np.inf))
     return nrm
 
 
-def norm_l12nn_project(g, x, weights, tau):
-    """Projection with number of groups equal to g
+def norm_l12nn_project(
+    g: int, x: NumericArray, weights: WeightsType, tau: float
+) -> NumericArray:
+    """Projection with number of groups equal to g.
 
     Parameters
     ----------
@@ -682,7 +728,7 @@ def norm_l12nn_project(g, x, weights, tau):
 
     Returns
     -------
-    x : float
+    x : ndarray
         Projected array
 
     """
@@ -693,7 +739,17 @@ def norm_l12nn_project(g, x, weights, tau):
     return _norm_l12_project(g, xx, weights, tau)
 
 
-def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau, mu=0):
+def _spg_line_curvy(
+    x: NumericArray,
+    g: NumericArray,
+    fmax: float,
+    A: LinearOperator,
+    b: NumericArray,
+    project: ProjectFunc,
+    weights: WeightsType,
+    tau: float,
+    mu: float = 0,
+) -> tuple[float, NumericArray, NumericArray, int, float, int, float, float]:
     """Projected backtracking linesearch.
 
     On entry, g is the (possibly scaled) steepest descent direction.
@@ -715,7 +771,7 @@ def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau, mu=0):
     weights : {float, ndarray}, optional
         Weights ``W`` in ``||Wx||_1``
     tau : float, optional
-        Projection radium
+        Projection radius
     mu : float, optional
         Tikhonov regularization parameter
 
@@ -729,7 +785,7 @@ def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau, mu=0):
         Residual after linesearch projection
     niters : int
         Number of iterations
-    step : int
+    step : float
         Final step
     err : int
         Error flag
@@ -747,8 +803,8 @@ def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau, mu=0):
     nsafe = 0
     niters = 0
     n = x.size
-    timeproject = 0
-    timematprod = 0
+    timeproject = 0.0
+    timematprod = 0.0
     while 1:
         # Evaluate trial point and function value.
         start_time_project = time.time()
@@ -757,11 +813,11 @@ def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau, mu=0):
         start_time_matprod = time.time()
         rnew = b - A.matvec(xnew)
         timematprod += time.time() - start_time_matprod
-        fnew = np.abs(np.conj(rnew).dot(rnew)) / 2.0
+        fnew = float(np.abs(np.conj(rnew).dot(rnew)) / 2.0)
         if mu > 0:
-            fnew = fnew + (mu / 2.0) * np.abs(np.dot(np.conj(xnew), xnew))
+            fnew = fnew + (mu / 2.0) * float(np.abs(np.dot(np.conj(xnew), xnew)))
         s = xnew - x
-        gts = scale * np.real(np.dot(np.conj(g), s))
+        gts = scale * float(np.real(np.dot(np.conj(g), s)))
 
         if gts >= 0:
             err = EXIT_NODESCENT_spgline
@@ -791,7 +847,16 @@ def _spg_line_curvy(x, g, fmax, A, b, project, weights, tau, mu=0):
     return fnew, xnew, rnew, niters, step, err, timeproject, timematprod
 
 
-def _spg_line(f, x, d, gtd, fmax, A, b, mu=0):
+def _spg_line(
+    f: float,
+    x: NumericArray,
+    d: NumericArray,
+    gtd: float,
+    fmax: float,
+    A: LinearOperator,
+    b: NumericArray,
+    mu: float = 0,
+) -> tuple[float, NumericArray, NumericArray, int, int, float]:
     """Non-monotone linesearch.
 
     Parameters
@@ -800,7 +865,7 @@ def _spg_line(f, x, d, gtd, fmax, A, b, mu=0):
         Residual norm
     x : ndarray
         Input array
-    d : float
+    d : ndarray
         Difference between input array and proposed projected array
     gtd : float
         Dot product between gradient and d
@@ -819,7 +884,7 @@ def _spg_line(f, x, d, gtd, fmax, A, b, mu=0):
         Residual norm after linesearch projection
     xnew : ndarray
         Model after linesearch projection
-    xnew : ndarray
+    rnew : ndarray
         Residual after linesearch projection
     niters : int
         Number of iterations
@@ -834,16 +899,16 @@ def _spg_line(f, x, d, gtd, fmax, A, b, mu=0):
     niters = 0
     gamma = 1e-4
     gtd = -abs(gtd)
-    timematprod = 0
+    timematprod = 0.0
     while 1:
         # Evaluate trial point and function value.
         xnew = x + step * d
         start_time_matprod = time.time()
         rnew = b - A.matvec(xnew)
         timematprod += time.time() - start_time_matprod
-        fnew = abs(np.conj(rnew).dot(rnew)) / 2.0
+        fnew = float(abs(np.conj(rnew).dot(rnew)) / 2.0)
         if mu > 0:
-            fnew = fnew + (mu / 2.0) * abs(np.dot(np.conj(xnew), xnew))
+            fnew = fnew + (mu / 2.0) * float(abs(np.dot(np.conj(xnew), xnew)))
 
         # Check exit conditions.
         if fnew < fmax + gamma * step * gtd:  # Sufficient descent condition.
@@ -867,7 +932,14 @@ def _spg_line(f, x, d, gtd, fmax, A, b, mu=0):
     return fnew, xnew, rnew, niters, err, timematprod
 
 
-def _active_vars(x, g, nnz_idx, opttol, weights, dual_norm):
+def _active_vars(
+    x: NumericArray,
+    g: NumericArray,
+    nnz_idx: NDArray[np.bool_] | None,
+    opttol: float,
+    weights: WeightsType,
+    dual_norm: NormFunc,
+) -> tuple[int, int, NDArray[np.bool_], int | float]:
     """Find the current active set.
 
     Returns
@@ -897,51 +969,51 @@ def _active_vars(x, g, nnz_idx, opttol, weights, dual_norm):
     nnz_idx = xpos | xneg
 
     # Count is based on simple primal indicator.
-    nnz_x = np.sum(np.abs(x) >= xtol)
-    nnz_g = np.sum(nnz_idx)
+    nnz_x = int(np.sum(np.abs(x) >= xtol))
+    nnz_g = int(np.sum(nnz_idx))
 
     if nnz_old is None:
-        nnz_diff = np.inf
+        nnz_diff: int | float = np.inf
     else:
-        nnz_diff = np.sum(nnz_idx != nnz_old)
+        nnz_diff = int(np.sum(nnz_idx != nnz_old))
 
     return nnz_x, nnz_g, nnz_idx, nnz_diff
 
 
 def spgl1(
-    A,
-    b,
-    tau=0,
-    sigma=0,
-    x0=None,
-    fid=None,
-    verbosity=0,
-    iter_lim=None,
-    n_prev_vals=3,
-    bp_tol=1e-6,
-    ls_tol=1e-6,
-    opt_tol=1e-4,
-    dec_tol=1e-4,
-    step_min=1e-16,
-    step_max=1e5,
-    active_set_niters=np.inf,
-    subspace_min=False,
-    iscomplex=False,
-    max_matvec=np.inf,
-    weights=None,
-    project=_norm_l1_project,
-    primal_norm=_norm_l1_primal,
-    dual_norm=_norm_l1_dual,
-    mu=0,
-    proj_tol=None,
-    rootfind_mode=0,
-    rootfind_tol=0.5,
-    relgap_min_f=1.0,
-    relgap_min_r=1.0,
-    max_runtime=np.inf,
-    hybrid_mode=False,
-    lbfgs_hist=8,
-):
+    A: ArrayLike | LinearOperator,
+    b: ArrayLike,
+    tau: float = 0,
+    sigma: float = 0,
+    x0: ArrayLike | None = None,
+    fid: TextIO | None = None,
+    verbosity: int = 0,
+    iter_lim: int | None = None,
+    n_prev_vals: int = 3,
+    bp_tol: float = 1e-6,
+    ls_tol: float = 1e-6,
+    opt_tol: float = 1e-4,
+    dec_tol: float = 1e-4,
+    step_min: float = 1e-16,
+    step_max: float = 1e5,
+    active_set_niters: float = np.inf,
+    subspace_min: bool = False,
+    iscomplex: bool = False,
+    max_matvec: float = np.inf,
+    weights: WeightsType | None = None,
+    project: ProjectFunc = _norm_l1_project,
+    primal_norm: NormFunc = _norm_l1_primal,
+    dual_norm: NormFunc = _norm_l1_dual,
+    mu: float = 0,
+    proj_tol: float | None = None,
+    rootfind_mode: int = 0,
+    rootfind_tol: float = 0.5,
+    relgap_min_f: float = 1.0,
+    relgap_min_r: float = 1.0,
+    max_runtime: float = np.inf,
+    hybrid_mode: bool = False,
+    lbfgs_hist: int = 8,
+) -> tuple[NumericArray, NumericArray, NumericArray, dict[str, Any]]:
     r"""SPGL1 solver.
 
     Solve basis pursuit (BP), basis pursuit denoise (BPDN), or LASSO problems
@@ -976,7 +1048,7 @@ def spgl1(
     iter_lim : int, optional
         Max. number of iterations (default if ``10*m``).
     n_prev_vals : int, optional
-         Line-search history lenght.
+         Line-search history length.
     bp_tol : float, optional
         Tolerance for identifying a basis pursuit solution.
     ls_tol : float, optional
@@ -985,7 +1057,7 @@ def spgl1(
          residual becomes smaller or equal to ``ls_tol``.
     opt_tol : float, optional
         Optimality tolerance. More specifically, when using basis pursuit
-        denoise, the optimility condition is met when the absolute difference
+        denoise, the optimality condition is met when the absolute difference
         between the L2 norm of the residual and the ``sigma`` is smaller than
         ``opt_tol``.
     dec_tol : float, optional
@@ -1010,9 +1082,9 @@ def spgl1(
     project : func, optional
         Projection function
     primal_norm : func, optional
-        Primal norm evaluation fun
+        Primal norm evaluation function
     dual_norm : func, optional
-         Dual norm eval function
+         Dual norm evaluation function
     mu : float, optional
         Tikhonov regularization parameter. When ``mu > 0``, the problem is
         augmented with Tikhonov regularization, modifying the objective to
@@ -1141,14 +1213,14 @@ def spgl1(
     nline_tot = 0  # Total number of linesearch steps.
     print_tau = False
     n_newton = 0  # Number of Newton iterations
-    bnorm = np.linalg.norm(b)
-    stat = False
-    time_project = 0  # Time spent in projections
-    time_matprod = 0  # Time spent in matvec computations
+    bnorm = float(np.linalg.norm(b))
+    stat: int | bool = False
+    time_project = 0.0  # Time spent in projections
+    time_matprod = 0.0  # Time spent in matvec computations
     nnz_niters = 0  # No. of iterations with fixed pattern.
-    nnz_idx = None  # Active-set indicator.
+    nnz_idx: NDArray[np.bool_] | None = None  # Active-set indicator.
     subspace = False  # Flag if did subspace min in current itn.
-    stepg = 1  # Step length for projected gradient.
+    stepg = 1.0  # Step length for projected gradient.
     test_updatetau = False  # Previous step did not update tau
     runtime_check_every = 1  # Check runtime every # iterations
 
@@ -1169,7 +1241,7 @@ def spgl1(
         realx = False
 
     # Validate hybrid mode: only applies to real-valued L1 problems
-    l1_mode = (project is _norm_l1_project)
+    l1_mode = project is _norm_l1_project
     if hybrid_mode:
         if not (realx and l1_mode):
             raise ValueError(
@@ -1199,7 +1271,7 @@ def spgl1(
         logger.warning("W: Subspace minimization disabled when variables are complex.")
         subspace_min = False
 
-    #% Pre-allocate iteration info vectors
+    # Pre-allocate iteration info vectors
     xnorm1 = np.zeros(min(iter_lim + 1, _allocSize))
     rnorm2 = np.zeros(min(iter_lim + 1, _allocSize))
     lambdaa = np.zeros(min(iter_lim + 1, _allocSize))
@@ -1265,9 +1337,9 @@ def spgl1(
     r = b - A.matvec(x)  # r = b - Ax
     g = -A.rmatvec(r)  # g = -A'r
     time_matprod += time.time() - start_time_matvec
-    f = np.linalg.norm(r) ** 2 / 2.0
+    f = float(np.linalg.norm(r) ** 2 / 2.0)
     if mu > 0:
-        f = f + (mu / 2.0) * np.dot(x, x)
+        f = f + (mu / 2.0) * float(np.dot(x, x))
         g = g + mu * x
     nprodA += 1
     nprodAt += 1
@@ -1302,7 +1374,7 @@ def spgl1(
     start_time_project = time.time()
     dx = project(x - g, weights, tau) - x
     time_project += time.time() - start_time_project
-    dxnorm = np.linalg.norm(dx, np.inf)
+    dxnorm = float(np.linalg.norm(dx, np.inf))
     if dxnorm < (1.0 / step_max):
         gstep = step_max
     else:
@@ -1315,16 +1387,16 @@ def spgl1(
         # Compute quantities needed for log and exit conditions.
         gnorm = dual_norm(-g, weights)
         if mu == 0:
-            rnorm = np.linalg.norm(r)
+            rnorm = float(np.linalg.norm(r))
         else:
             # Augmented residual: sqrt(||r||^2 + mu*||x||^2)
-            rnorm = np.sqrt(2.0 * f)
+            rnorm = float(np.sqrt(2.0 * f))
 
         # Compute dual objective
-        rtr = np.dot(np.conj(r), r)
+        rtr = float(np.dot(np.conj(r), r))
         if mu == 0:
             # Classic method: f_dual = r'*b - tau*||g|| - ||r||^2/2
-            f_dual = np.dot(np.conj(r), b) - tau * gnorm - rtr / 2.0
+            f_dual = float(np.dot(np.conj(r), b)) - tau * gnorm - rtr / 2.0
         else:
             # For mu > 0, use findLambdaStar for proper dual computation
             # Compute z = |mu*x - g| = |A'*r| (since g = -A'*r + mu*x)
@@ -1337,7 +1409,7 @@ def spgl1(
             else:
                 weights_full = weights
             obj_value, _ = _find_lambda_star(z, weights_full, tau, mu)
-            f_dual = np.dot(np.conj(r), b) - rtr / 2.0 - obj_value
+            f_dual = float(np.dot(np.conj(r), b)) - rtr / 2.0 - obj_value
 
         # Track best dual objective
         if f_dual > f_dual_max:
@@ -1346,14 +1418,14 @@ def spgl1(
         else:
             f_dual = f_dual_max
 
-        gap = np.dot(np.conj(r), r - b) + tau * gnorm
+        gap = float(np.dot(np.conj(r), r - b)) + tau * gnorm
         rgap = abs(gap) / max(1.0, f)
         aerror1 = rnorm - sigma
         aerror2 = f - sigma**2.0 / 2.0
         rerror1 = abs(aerror1) / max(1.0, rnorm)
         rerror2 = abs(aerror2) / max(1.0, f)
 
-        #% Count number of consecutive iterations with identical support.
+        # Count number of consecutive iterations with identical support.
         nnz_old = nnz_idx
         nnz_x, nnz_g, nnz_idx, nnz_diff = _active_vars(
             x, g, nnz_idx, opt_tol, weights, dual_norm
@@ -1390,9 +1462,9 @@ def spgl1(
                     if rnorm <= bp_tol * bnorm:
                         stat = EXIT_BPSOL_FOUND  # Resid minimzd -> BP sol.
 
-                fchange = np.abs(f - fold)
+                fchange = abs(f - fold)
                 test_relchange1 = fchange <= dec_tol * f
-                test_relcchange2 = fchange <= 1e-1 * f * (np.abs(rnorm - sigma))
+                test_relcchange2 = fchange <= 1e-1 * f * (abs(rnorm - sigma))
                 test_updatetau = (
                     (
                         (test_relchange1 and rnorm > 2 * sigma)
@@ -1413,14 +1485,14 @@ def spgl1(
                     flag_fix_tau = True
 
                 # Check the gap ratio (dual - sigma) / (primal - sigma)
-                sigma2 = sigma ** 2
+                sigma2 = sigma**2
                 if f > sigma2 / 2.0:  # Avoid division by zero
                     ratio = (f_dual - sigma2 / 2.0) / (f - sigma2 / 2.0)
                 else:
                     ratio = 0.0
 
                 # Dual objective determines candidate tau values
-                aerror_dual = (np.dot(np.conj(b), r) - tau * gnorm) - rnorm * sigma
+                aerror_dual = float(np.dot(np.conj(b), r)) - tau * gnorm - rnorm * sigma
                 tau_new = max(tau, tau + aerror_dual / gnorm)
 
                 # Check optimality
@@ -1446,7 +1518,7 @@ def spgl1(
                     # Dual mode: use tau_new computed above
                     tau = tau_new
                 n_newton += 1
-                print_tau = np.abs(tau_old - tau) >= 1e-6 * tau  # For log only.
+                print_tau = abs(tau_old - tau) >= 1e-6 * tau  # For log only.
                 if tau < tau_old:
                     # The one-norm ball has decreased. Need to make sure that
                     # the next iterate is feasible, which we do by projecting it.
@@ -1460,9 +1532,9 @@ def spgl1(
                     g = -A.rmatvec(r)
                     time_matprod += time.time() - start_time_matvec
 
-                    f = np.linalg.norm(r) ** 2 / 2.0
+                    f = float(np.linalg.norm(r) ** 2 / 2.0)
                     if mu > 0:
-                        f = f + (mu / 2.0) * np.dot(x, x)
+                        f = f + (mu / 2.0) * float(np.dot(x, x))
                         g = g + mu * x
                     nprodA += 1
                     nprodAt += 1
@@ -1567,7 +1639,7 @@ def spgl1(
         # Iterations begin here.
         niters += 1
         xold = x.copy()
-        fold = f.copy()
+        fold = f
         gold = g.copy()
         rold = r.copy()
 
@@ -1575,7 +1647,7 @@ def spgl1(
             # ===================================
             # Try a quasi-Newton direction first
             # ===================================
-            lnerr = True  # Assume failure; set to False if hybrid succeeds
+            lnerr: int | bool = True  # Assume failure; set to False if hybrid succeeds
             if flag_use_hessian:
                 try:
                     # Step 1. Get search direction
@@ -1587,12 +1659,16 @@ def spgl1(
 
                         # Project gradient onto the coefficient space
                         d_trans = product_b(
-                            hybrid_signs * d[hybrid_support], 1,
-                            hybrid_sqrt1, hybrid_sqrt2
+                            hybrid_signs * d[hybrid_support],
+                            1,
+                            hybrid_sqrt1,
+                            hybrid_sqrt2,
                         )
 
                         # If ||dTrans|| is tiny, direction is (near) orthogonal to the face
-                        if np.linalg.norm(d_trans, 2) <= 1e-10 * max(1.0, np.linalg.norm(d, 2)):
+                        if np.linalg.norm(d_trans, 2) <= 1e-10 * max(
+                            1.0, np.linalg.norm(d, 2)
+                        ):
                             if single_tau:
                                 stat = EXIT_OPTIMAL
                             else:
@@ -1622,11 +1698,11 @@ def spgl1(
                         nprodA += 1
 
                         # Step 3. Compute the optimal step length beta
-                        enumerator = w @ r
-                        denominator = w @ w
+                        enumerator = float(w @ r)
+                        denominator = float(w @ w)
                         if mu > 0:
-                            enumerator = enumerator - mu * (x @ d)
-                            denominator = denominator + mu * (d @ d)
+                            enumerator = enumerator - mu * float(x @ d)
+                            denominator = denominator + mu * float(d @ d)
 
                         beta = enumerator / denominator
                         if beta <= 1e-11:
@@ -1636,9 +1712,9 @@ def spgl1(
                             # Take the hybrid step
                             x = xold + beta * d
                             r = r - beta * w  # Avoid evaluating A*x
-                            f = (r @ r) / 2.0
+                            f = float(r @ r) / 2.0
                             if mu > 0:
-                                f = f + (mu / 2.0) * (x @ x)
+                                f = f + (mu / 2.0) * float(x @ x)
                             stepg = beta
                             nline_tot += 1
 
@@ -1661,7 +1737,9 @@ def spgl1(
                     lnerr,
                     time_project_curvy,
                     time_matprod_curvy,
-                ) = _spg_line_curvy(x, gstep * g, max(last_fv), A, b, project, weights, tau, mu)
+                ) = _spg_line_curvy(
+                    x, gstep * g, max(last_fv), A, b, project, weights, tau, mu
+                )
                 time_project += time_project_curvy
                 time_matprod += time_matprod_curvy
                 nprodA += niter_line + 1
@@ -1678,11 +1756,11 @@ def spgl1(
                 start_time_project = time.time()
                 dx = project(x - gstep * g, weights, tau) - x
                 time_project += time.time() - start_time_project
-                gtd = np.dot(np.conj(g), dx)
-                f, x, r, niter_line, lnerr, time_matprod = _spg_line(
+                gtd = float(np.dot(np.conj(g), dx))
+                f, x, r, niter_line, lnerr, time_matprod_line = _spg_line(
                     f, x, dx, gtd, max(last_fv), A, b, mu
                 )
-                time_matprod += time_matprod
+                time_matprod += time_matprod_line
                 nprodA += niter_line + 1
                 nline_tot += niter_line
                 if nprodA + nprodAt > max_matvec:
@@ -1771,9 +1849,9 @@ def spgl1(
                         start_time_matvec = time.time()
                         r = b - A.matvec(x)
                         time_matprod += time.time() - start_time_matvec
-                        f = abs(np.dot(np.conj(r), r)) / 2.0
+                        f = float(abs(np.dot(np.conj(r), r)) / 2.0)
                         if mu > 0:
-                            f = f + (mu / 2.0) * abs(np.dot(np.conj(x), x))
+                            f = f + (mu / 2.0) * float(abs(np.dot(np.conj(x), x)))
                         subspace = True
                         nprodA += 1
 
@@ -1788,8 +1866,8 @@ def spgl1(
                 nprodAt += 1
                 s = x - xold
                 y = g - gold
-                sts = np.dot(np.conj(s), s)
-                sty = np.dot(np.conj(s), y)
+                sts = float(np.dot(np.conj(s), s))
+                sty = float(np.dot(np.conj(s), y))
                 if sty <= 0:
                     gstep = step_max
                 else:
@@ -1805,7 +1883,7 @@ def spgl1(
             if hybrid_mode:
                 support_old = hybrid_support.copy()
                 absx = np.abs(x)
-                xnorm1_h = np.sum(absx)
+                xnorm1_h = float(np.sum(absx))
 
                 # Step 1. Determine support
                 if abs(xnorm1_h - tau) / max(1.0, tau) > 1e-8:
@@ -1817,14 +1895,13 @@ def spgl1(
 
                 # Step 2. Check if Hessian should be updated
                 flag_update_hessian = (
-                    n_support > 1 and
-                    n_support <= m and
-                    niters > 1 and
-                    not lnerr and
-                    np.array_equal(hybrid_support, support_old) and
-                    np.array_equal(
-                        np.sign(x[hybrid_support]),
-                        np.sign(xold[hybrid_support])
+                    n_support > 1
+                    and n_support <= m
+                    and niters > 1
+                    and not lnerr
+                    and np.array_equal(hybrid_support, support_old)
+                    and np.array_equal(
+                        np.sign(x[hybrid_support]), np.sign(xold[hybrid_support])
                     )
                 )
 
@@ -1837,23 +1914,22 @@ def spgl1(
                         s2_chk = ((d_chk <= 0) & (x < 0)) | ((d_chk >= 0) & (x > 0))
                         s3_chk = ~(s1_chk | s2_chk)
 
-                        sum1 = np.sum(np.abs(d_chk[s1_chk]))
-                        sum2 = np.sum(np.abs(d_chk[s2_chk]))
-                        sum3 = np.sum(np.abs(d_chk[s3_chk]))
+                        sum1 = float(np.sum(np.abs(d_chk[s1_chk])))
+                        sum2 = float(np.sum(np.abs(d_chk[s2_chk])))
+                        sum3 = float(np.sum(np.abs(d_chk[s3_chk])))
 
                         if sum1 > sum2 + sum3:
                             flag_self_proj = False
                         elif sum1 < sum2 + sum3:
-                            n_supp = np.sum(hybrid_support)
+                            n_supp = int(np.sum(hybrid_support))
                             if n_supp > 0:
-                                flag_self_proj = (
-                                    np.max(np.abs(d_chk[s3_chk]), initial=0) <=
-                                    (sum1 + sum2) / n_supp
-                                )
+                                flag_self_proj = float(
+                                    np.max(np.abs(d_chk[s3_chk]), initial=0)
+                                ) <= (sum1 + sum2) / n_supp
                             else:
                                 flag_self_proj = False
                         else:
-                            flag_self_proj = (sum3 == 0)
+                            flag_self_proj = sum3 == 0
                     else:
                         # Interior of crosspolytope
                         flag_self_proj = True
@@ -1883,13 +1959,26 @@ def spgl1(
                         lbfgs_update(hybrid_H, 1, s_iter, gold, g)
                     else:
                         lbfgs_update(
-                            hybrid_H, 1,
-                            product_b(hybrid_signs * s_iter[hybrid_support], 1,
-                                      hybrid_sqrt1, hybrid_sqrt2),
-                            product_b(hybrid_signs * gold[hybrid_support], 1,
-                                      hybrid_sqrt1, hybrid_sqrt2),
-                            product_b(hybrid_signs * g[hybrid_support], 1,
-                                      hybrid_sqrt1, hybrid_sqrt2),
+                            hybrid_H,
+                            1,
+                            product_b(
+                                hybrid_signs * s_iter[hybrid_support],
+                                1,
+                                hybrid_sqrt1,
+                                hybrid_sqrt2,
+                            ),
+                            product_b(
+                                hybrid_signs * gold[hybrid_support],
+                                1,
+                                hybrid_sqrt1,
+                                hybrid_sqrt2,
+                            ),
+                            product_b(
+                                hybrid_signs * g[hybrid_support],
+                                1,
+                                hybrid_sqrt1,
+                                hybrid_sqrt2,
+                            ),
                         )
 
                     flag_use_hessian = True
@@ -1911,14 +2000,14 @@ def spgl1(
 
         #  Update function history.
         if single_tau or f > sigma**2 / 2.0:  # Dont update if superoptimal.
-            last_fv[np.mod(niters, n_prev_vals)] = f.copy()
+            last_fv[np.mod(niters, n_prev_vals)] = f
             if fbest > f:
-                fbest = f.copy()
+                fbest = f
                 xbest = x.copy()
 
     # Restore best solution (only if solving single problem).
     if single_tau and f > fbest:
-        rnorm = np.sqrt(2.0 * fbest)
+        rnorm = float(np.sqrt(2.0 * fbest))
         print("Restoring best iterate to objective " + str(rnorm))
         x = xbest.copy()
         start_time_matvec = time.time()
@@ -1929,14 +2018,14 @@ def spgl1(
             g = g + mu * x
         gnorm = dual_norm(g, weights)
         if mu == 0:
-            rnorm = np.linalg.norm(r)
+            rnorm = float(np.linalg.norm(r))
         else:
-            rnorm = np.sqrt(np.dot(r, r) + mu * np.dot(x, x))
+            rnorm = float(np.sqrt(np.dot(r, r) + mu * np.dot(x, x)))
         nprodA += 1
         nprodAt += 1
 
     # Final cleanup before exit.
-    info = {}
+    info: dict[str, Any] = {}
     info["tau"] = tau
     info["rnorm"] = rnorm
     info["rgap"] = rgap
@@ -2025,7 +2114,9 @@ def spgl1(
     return x, r, g, info
 
 
-def spg_bp(A, b, **kwargs):
+def spg_bp(
+    A: ArrayLike | LinearOperator, b: ArrayLike, **kwargs: Any
+) -> tuple[NumericArray, NumericArray, NumericArray, dict[str, Any]]:
     """Basis pursuit (BP) problem.
 
     ``spg_bp`` is designed to solve the basis pursuit problem::
@@ -2067,7 +2158,9 @@ def spg_bp(A, b, **kwargs):
     return x, r, g, info
 
 
-def spg_bpdn(A, b, sigma, **kwargs):
+def spg_bpdn(
+    A: ArrayLike | LinearOperator, b: ArrayLike, sigma: float, **kwargs: Any
+) -> tuple[NumericArray, NumericArray, NumericArray, dict[str, Any]]:
     """Basis pursuit denoise (BPDN) problem.
 
 
@@ -2088,6 +2181,8 @@ def spg_bpdn(A, b, sigma, **kwargs):
         the linear operator can produce ``Ax`` and ``A^T x``.
     b : array_like, shape (m,)
         Right-hand side vector ``b``.
+    sigma : float
+        BPDN threshold.
     kwargs : dict, optional
         Additional input parameters (refer to :func:`spgl1.spgl1` for a list
         of possible parameters)
@@ -2110,7 +2205,9 @@ def spg_bpdn(A, b, sigma, **kwargs):
     return x, r, g, info
 
 
-def spg_lasso(A, b, tau, **kwargs):
+def spg_lasso(
+    A: ArrayLike | LinearOperator, b: ArrayLike, tau: float, **kwargs: Any
+) -> tuple[NumericArray, NumericArray, NumericArray, dict[str, Any]]:
     """LASSO problem.
 
     ``spg_lasso`` is designed to solve the Lasso problem::
@@ -2130,6 +2227,8 @@ def spg_lasso(A, b, tau, **kwargs):
         the linear operator can produce ``Ax`` and ``A^T x``.
     b : array_like, shape (m,)
         Right-hand side vector ``b``.
+    tau : float
+        LASSO threshold.
     kwargs : dict, optional
         Additional input parameters (refer to :func:`spgl1.spgl1` for a list
         of possible parameters)
@@ -2152,7 +2251,9 @@ def spg_lasso(A, b, tau, **kwargs):
     return x, r, g, info
 
 
-def spg_mmv(A, B, sigma=0, **kwargs):
+def spg_mmv(
+    A: ArrayLike | LinearOperator, B: ArrayLike, sigma: float = 0, **kwargs: Any
+) -> tuple[NumericArray, NumericArray, NumericArray, dict[str, Any]]:
     """MMV problem.
 
     ``spg_mmv`` is designed to solve the  multi-measurement vector
@@ -2169,8 +2270,8 @@ def spg_mmv(A, B, sigma=0, **kwargs):
     A : {sparse matrix, ndarray, LinearOperator}
         Representation of an M-by-N  matrix.  It is required that
         the linear operator can produce ``Ax`` and ``A^T x``.
-    b : array_like, shape (m,)
-        Right-hand side matrix ``b`` of size M-by-G.
+    B : array_like, shape (m, g)
+        Right-hand side matrix ``B`` of size M-by-G.
     sigma : float, optional
         BPDN threshold. If different from ``None``, spgl1 solves BPDN problem
     kwargs : dict, optional
@@ -2179,11 +2280,11 @@ def spg_mmv(A, B, sigma=0, **kwargs):
 
     Returns
     -------
-    x : array_like, shape (n,)
+    x : array_like, shape (n, g)
         Inverted model
-    r : array_like, shape (m,)
+    r : array_like, shape (m * g,)
         Final residual
-    g : array_like, shape (h,)
+    g : array_like, shape (n, g)
         Final gradient
     info : dict
         See spgl1.
@@ -2191,7 +2292,8 @@ def spg_mmv(A, B, sigma=0, **kwargs):
     """
     A = aslinearoperator(A)
     m, n = A.shape
-    groups = B.shape[1]
+    B_arr = np.asarray(B)
+    groups = B_arr.shape[1]
     A = _blockdiag(A, m, n, groups)
 
     # Set projection specific functions
@@ -2210,22 +2312,22 @@ def spg_mmv(A, B, sigma=0, **kwargs):
     kwargs.pop("dual_norm", None)
     kwargs.pop("project", None)
 
-    project = lambda x, weight, tau: _project(groups, x, weight, tau)
-    primal_norm = lambda x, weight: _primal_norm(groups, x, weight)
-    dual_norm = lambda x, weight: _dual_norm(groups, x, weight)
+    project: ProjectFunc = lambda x, weight, tau: _project(groups, x, weight, tau)
+    primal_norm_func: NormFunc = lambda x, weight: _primal_norm(groups, x, weight)
+    dual_norm_func: NormFunc = lambda x, weight: _dual_norm(groups, x, weight)
 
     tau = 0
     x0 = None
     x, r, g, info = spgl1(
         A,
-        B.ravel(),
+        B_arr.ravel(),
         tau,
         sigma,
         x0,
         project=project,
-        primal_norm=primal_norm,
-        dual_norm=dual_norm,
-        **kwargs
+        primal_norm=primal_norm_func,
+        dual_norm=dual_norm_func,
+        **kwargs,
     )
     x = x.reshape(n, groups)
     g = g.reshape(n, groups)
@@ -2233,7 +2335,13 @@ def spg_mmv(A, B, sigma=0, **kwargs):
     return x, r, g, info
 
 
-def spg_group(A, b, groups, sigma=0, **kwargs):
+def spg_group(
+    A: ArrayLike | LinearOperator,
+    b: ArrayLike,
+    groups: ArrayLike,
+    sigma: float = 0,
+    **kwargs: Any,
+) -> tuple[NumericArray, NumericArray, NumericArray, dict[str, Any]]:
     """Group sparsity problem.
 
     ``spg_group`` is designed to solve the jointly-sparse basis pursuit
@@ -2296,22 +2404,22 @@ def spg_group(A, b, groups, sigma=0, **kwargs):
 
     """
     # Preprocess groups: normalize numbering and create sparse matrix
-    g = np.asarray(groups).flatten()
-    n = len(g)
+    g_arr = np.asarray(groups).flatten()
+    n = len(g_arr)
 
     # Get unique group indices and create mapping
     # unique returns: unique values, indices into unique, inverse mapping
-    gidx, idx1, idx2 = np.unique(g, return_index=True, return_inverse=True)
+    gidx, idx1, idx2 = np.unique(g_arr, return_index=True, return_inverse=True)
     num_groups = len(gidx)
 
     # Create sparse binary matrix: groups(i, j) = 1 if element j is in group i
     from scipy.sparse import csr_matrix
+
     row_indices = idx2  # Which group each element belongs to
     col_indices = np.arange(n)  # Element index
     data = np.ones(n)
     groups_matrix = csr_matrix(
-        (data, (row_indices, col_indices)),
-        shape=(num_groups, n)
+        (data, (row_indices, col_indices)), shape=(num_groups, n)
     )
 
     # Set projection-specific functions
@@ -2321,23 +2429,19 @@ def spg_group(A, b, groups, sigma=0, **kwargs):
         else kwargs["primal_norm"]
     )
     _dual_norm = (
-        _norm_groupl2_dual
-        if "dual_norm" not in kwargs.keys()
-        else kwargs["dual_norm"]
+        _norm_groupl2_dual if "dual_norm" not in kwargs.keys() else kwargs["dual_norm"]
     )
     _project = (
-        _norm_groupl2_project
-        if "project" not in kwargs.keys()
-        else kwargs["project"]
+        _norm_groupl2_project if "project" not in kwargs.keys() else kwargs["project"]
     )
     kwargs.pop("primal_norm", None)
     kwargs.pop("dual_norm", None)
     kwargs.pop("project", None)
 
     # Create lambdas that pass the groups matrix
-    project = lambda x, weight, tau: _project(groups_matrix, x, weight, tau)
-    primal_norm = lambda x, weight: _primal_norm(groups_matrix, x, weight)
-    dual_norm = lambda x, weight: _dual_norm(groups_matrix, x, weight)
+    project: ProjectFunc = lambda x, weight, tau: _project(groups_matrix, x, weight, tau)
+    primal_norm_func: NormFunc = lambda x, weight: _primal_norm(groups_matrix, x, weight)
+    dual_norm_func: NormFunc = lambda x, weight: _dual_norm(groups_matrix, x, weight)
 
     tau = 0
     x0 = None
@@ -2348,9 +2452,9 @@ def spg_group(A, b, groups, sigma=0, **kwargs):
         sigma,
         x0,
         project=project,
-        primal_norm=primal_norm,
-        dual_norm=dual_norm,
-        **kwargs
+        primal_norm=primal_norm_func,
+        dual_norm=dual_norm_func,
+        **kwargs,
     )
 
     return x, r, g_grad, info
