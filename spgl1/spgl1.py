@@ -103,6 +103,80 @@ def _printf(fid, message):
         fid.write(message)
 
 
+def _find_lambda_star(z, w, tau, mu):
+    """Solve the subproblem for dual objective computation with Tikhonov regularization.
+
+    Solves:
+        minimize  tau*lambda + (1/(2*mu)) * ||[z - lambda*w]_+||_2^2
+         lambda
+
+    where [.]_+ denotes the positive part (max(., 0)).
+
+    Parameters
+    ----------
+    z : ndarray
+        Vector z = |A'*r| = |-g + mu*x| (absolute values of scaled gradient).
+    w : ndarray
+        Weight vector (typically all ones for unweighted L1 norm).
+    tau : float
+        Current L1-norm constraint value.
+    mu : float
+        Tikhonov regularization parameter (must be > 0).
+
+    Returns
+    -------
+    obj : float
+        Optimal objective value of the subproblem.
+    lambda_star : float
+        Optimal lambda value (optional, for debugging).
+    """
+    # Compute breakpoints: lambda_k = z_k / w_k
+    lambdak = z / w
+
+    if tau == 0:
+        # Special case: tau=0 means we want ||x||_1 = 0
+        lambda_star = np.max(lambdak)
+        obj = 0.0
+    else:
+        # Sort breakpoints in descending order
+        idx = np.argsort(lambdak)[::-1]
+        lambdak_sorted = lambdak[idx]
+        w_sorted = w[idx]
+        z_sorted = z[idx]
+
+        # Initialize gradient (gradient of objective w.r.t. lambda)
+        g = tau
+        i = 0
+        ww = 0.0  # sum of w_j^2 for active indices
+        wz = 0.0  # sum of w_j * z_j for active indices
+        n = len(lambdak)
+
+        # Walk through breakpoints until gradient becomes non-positive
+        while g > 0 and i < n:
+            ww += w_sorted[i] ** 2
+            wz += w_sorted[i] * z_sorted[i]
+
+            if i + 1 < n:
+                lam = lambdak_sorted[i + 1]
+            else:
+                lam = 0.0
+
+            # Gradient at this breakpoint
+            g = tau - (wz - lam * ww) / mu
+            i += 1
+
+        # Solve for optimal lambda in the current interval
+        # Gradient is: tau - (1/mu)*(wz - lambda * ww)
+        # Setting to zero: lambda = (wz - tau*mu) / ww
+        lambda_star = max(0.0, wz - tau * mu) / ww
+
+        # Compute objective value
+        c = np.maximum(z - w * lambda_star, 0.0)
+        obj = tau * lambda_star + (1.0 / (2.0 * mu)) * np.dot(c, c)
+
+    return obj, lambda_star
+
+
 def _oneprojector_i(b, tau):
     n = b.size
     x = np.zeros(n, dtype=b.dtype)
@@ -1252,9 +1326,18 @@ def spgl1(
             # Classic method: f_dual = r'*b - tau*||g|| - ||r||^2/2
             f_dual = np.dot(np.conj(r), b) - tau * gnorm - rtr / 2.0
         else:
-            # For mu > 0, dual computation is more complex
-            # For now, use simplified formula (full implementation would call findLambdaStar)
-            f_dual = np.dot(np.conj(r), b) - rtr / 2.0 - tau * gnorm
+            # For mu > 0, use findLambdaStar for proper dual computation
+            # Compute z = |mu*x - g| = |A'*r| (since g = -A'*r + mu*x)
+            z = np.abs(mu * x - g)
+            # Get full weights (use 1.0 if no weights specified)
+            if weights is None or (np.isscalar(weights) and weights == 1):
+                weights_full = np.ones(n)
+            elif np.isscalar(weights):
+                weights_full = np.full(n, weights)
+            else:
+                weights_full = weights
+            obj_value, _ = _find_lambda_star(z, weights_full, tau, mu)
+            f_dual = np.dot(np.conj(r), b) - rtr / 2.0 - obj_value
 
         # Track best dual objective
         if f_dual > f_dual_max:
