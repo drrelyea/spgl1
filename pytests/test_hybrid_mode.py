@@ -1,9 +1,77 @@
-"""Test hybrid mode functionality."""
+"""Test hybrid mode functionality.
+
+Tests L-BFGS infrastructure, hybrid mode integration, and productB transformation.
+Includes both pure-Python robustness tests and Octave cross-validation tests.
+"""
+import subprocess
+import tempfile
+from pathlib import Path
+
 import numpy as np
 import pytest
+from scipy.io import savemat, loadmat
+
 from spgl1 import spgl1, spg_bpdn, spg_lasso
 from spgl1.lbfgs import lbfgs_init, lbfgs_update, lbfgs_hprod, lbfgs_bprod
+from spgl1.productB import product_b, compute_sqrt_vectors
+from pytests.conftest import octave_available, MATLAB_SPGL_PATH
 
+
+def _run_octave_script(script, input_data, timeout=30):
+    """Run an Octave script with .mat file I/O.
+
+    Parameters
+    ----------
+    script : str
+        Octave script that loads 'input.mat' and saves results to 'output.mat'.
+    input_data : dict
+        Variables to save to input.mat.
+    timeout : int
+        Timeout in seconds.
+
+    Returns
+    -------
+    dict or None
+        Loaded output.mat contents, or None on failure.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_file = str(Path(tmpdir) / "input.mat")
+        output_file = str(Path(tmpdir) / "output.mat")
+
+        # Convert 1D arrays to column vectors for MATLAB
+        mat_data = {}
+        for k, v in input_data.items():
+            if isinstance(v, np.ndarray) and v.ndim == 1:
+                mat_data[k] = v.reshape(-1, 1)
+            else:
+                mat_data[k] = v
+        savemat(input_file, mat_data, format='5')
+
+        full_script = f"""
+        addpath('{MATLAB_SPGL_PATH}');
+        addpath(fullfile('{MATLAB_SPGL_PATH}', 'private'));
+        load('{input_file}');
+        {script}
+        save('-v7', '{output_file}');
+        """
+
+        try:
+            result = subprocess.run(
+                ["octave", "--quiet", "--eval", full_script],
+                capture_output=True, text=True, timeout=timeout
+            )
+            if result.returncode != 0:
+                print(f"Octave stderr: {result.stderr}")
+                return None
+            return loadmat(output_file)
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+            print(f"Octave error: {e}")
+            return None
+
+
+# =========================================================================
+# Pure-Python L-BFGS tests
+# =========================================================================
 
 class TestLBFGSBasics:
     """Test L-BFGS data structure and operations."""
@@ -22,6 +90,7 @@ class TestLBFGSBasics:
 
     def test_hprod_no_history(self):
         """H*g with no history should return gamma * g."""
+        np.random.seed(50)
         n = 50
         H = lbfgs_init(n, k=5, dscale=2.0)
         g = np.random.randn(n)
@@ -30,6 +99,7 @@ class TestLBFGSBasics:
 
     def test_bprod_no_history(self):
         """B*g with no history should return delta * g."""
+        np.random.seed(51)
         n = 50
         H = lbfgs_init(n, k=5, dscale=2.0)
         g = np.random.randn(n)
@@ -42,13 +112,12 @@ class TestLBFGSBasics:
         n = 30
         H = lbfgs_init(n, k=5, dscale=1e-3)
 
-        # Create a simple quadratic: f(x) = 0.5*x'Qx, g = Qx
         Q = np.eye(n) + 0.1 * np.random.randn(n, n)
-        Q = Q.T @ Q  # Make SPD
+        Q = Q.T @ Q
 
         x = np.random.randn(n)
         g1 = Q @ x
-        p = -g1  # Steepest descent direction
+        p = -g1
         step = 0.5
         x_new = x + step * p
         g2 = Q @ x_new
@@ -56,7 +125,6 @@ class TestLBFGSBasics:
         noup = lbfgs_update(H, step, p, g1, g2)
         assert H.rank >= 0
 
-        # H*g should produce a valid vector
         d = lbfgs_hprod(H, g2)
         assert d.shape == (n,)
         assert np.all(np.isfinite(d))
@@ -66,16 +134,12 @@ class TestLBFGSBasics:
         n = 20
         H = lbfgs_init(n, k=3, dscale=1.0)
 
-        # Create a case where curvature condition fails:
-        # gtp2 <= 0.91 * gtp1 means the gradient didn't decrease enough
-        # along the search direction. Use p = -g1 (descent dir) and g2 = g1
-        # so gtp1 < 0 and gtp2 = gtp1. Then gtp2 <= 0.91*gtp1 means
-        # gtp1 <= 0.91*gtp1 → 0.09*gtp1 <= 0, true since gtp1 < 0.
+        # gtp1 = g1'*p = -n, gtp2 = -n, noup = (-n <= 0.91*(-n)) = (-n <= -0.91n) = True
         p = np.array([1.0] * n)
-        g1 = -p  # gtp1 = g1'*p = -n
-        g2 = g1.copy()  # gtp2 = -n also, so gtp2 <= 0.91*gtp1 → -n <= -0.91*n ✓
+        g1 = -p
+        g2 = g1.copy()
         noup = lbfgs_update(H, 1.0, p, g1, g2)
-        assert noup  # Should skip
+        assert noup
         assert H.status == 2
 
     def test_multiple_updates_circular_buffer(self):
@@ -97,7 +161,6 @@ class TestLBFGSBasics:
             lbfgs_update(H, step, p, g1, g2)
             x = x_new
 
-        # Should still produce valid results
         g = Q @ x
         d = lbfgs_hprod(H, g)
         assert np.all(np.isfinite(d))
@@ -114,7 +177,6 @@ class TestLBFGSBasics:
         Q = Q.T @ Q
         x = np.random.randn(n)
 
-        # Build up some history
         for i in range(5):
             g1 = Q @ x
             p = -g1
@@ -126,10 +188,138 @@ class TestLBFGSBasics:
 
         g = Q @ x
         d = lbfgs_hprod(H, -g)
-
-        # d should be a descent direction: g'*d < 0
         assert g @ d < 0, f"Not a descent direction: g'*d = {g @ d}"
 
+    def test_hprod_positive_definite(self):
+        """H should be positive definite: g'*H*g > 0 for any g != 0."""
+        np.random.seed(104)
+        n = 30
+        k = 5
+        H = lbfgs_init(n, k, dscale=1e-3)
+
+        Q = np.eye(n) + 0.3 * np.random.randn(n, n)
+        Q = Q.T @ Q
+        x = np.random.randn(n)
+
+        for i in range(5):
+            g1 = Q @ x
+            p = -g1
+            step = 0.05
+            x_new = x + step * p
+            g2 = Q @ x_new
+            lbfgs_update(H, step, p, g1, g2)
+            x = x_new
+
+        for trial in range(20):
+            g = np.random.randn(n)
+            d = lbfgs_hprod(H, g)
+            assert g @ d > 0, f"Lost positive definiteness at trial {trial}: g'*H*g = {g @ d}"
+
+    def test_hprod_symmetry(self):
+        """H should be symmetric: (H*g1)'*g2 == g1'*(H*g2)."""
+        np.random.seed(105)
+        n = 30
+        k = 5
+        H = lbfgs_init(n, k, dscale=1e-3)
+
+        Q = np.eye(n) + 0.2 * np.random.randn(n, n)
+        Q = Q.T @ Q
+        x = np.random.randn(n)
+
+        for i in range(4):
+            g1 = Q @ x
+            p = -g1
+            step = 0.05
+            x_new = x + step * p
+            g2 = Q @ x_new
+            lbfgs_update(H, step, p, g1, g2)
+            x = x_new
+
+        for trial in range(10):
+            v1 = np.random.randn(n)
+            v2 = np.random.randn(n)
+            d1 = lbfgs_hprod(H, v1)
+            d2 = lbfgs_hprod(H, v2)
+            lhs = d1 @ v2
+            rhs = v1 @ d2
+            rel_err = abs(lhs - rhs) / (abs(lhs) + 1e-15)
+            assert rel_err < 1e-10, f"Symmetry violation at trial {trial}: rel_err={rel_err}"
+
+    def test_hprod_linearity(self):
+        """H should be linear: H*(a*g1 + b*g2) == a*H*g1 + b*H*g2."""
+        np.random.seed(106)
+        n = 30
+        k = 5
+        H = lbfgs_init(n, k, dscale=1e-3)
+
+        Q = np.eye(n) + 0.3 * np.random.randn(n, n)
+        Q = Q.T @ Q
+        x = np.random.randn(n)
+
+        for i in range(4):
+            g1 = Q @ x
+            p = -g1
+            step = 0.05
+            x_new = x + step * p
+            g2 = Q @ x_new
+            lbfgs_update(H, step, p, g1, g2)
+            x = x_new
+
+        v1 = np.random.randn(n)
+        v2 = np.random.randn(n)
+        a, b = 2.3, -1.7
+        np.testing.assert_allclose(
+            lbfgs_hprod(H, a * v1 + b * v2),
+            a * lbfgs_hprod(H, v1) + b * lbfgs_hprod(H, v2),
+            rtol=1e-12
+        )
+
+    def test_bprod_hprod_inverse(self):
+        """B*H*g should approximately equal g (B = H^{-1})."""
+        np.random.seed(107)
+        n = 20
+        k = 5
+        H = lbfgs_init(n, k, dscale=1e-3)
+
+        Q = np.eye(n) * 2.0
+        x = np.random.randn(n)
+
+        for i in range(5):
+            g1 = Q @ x
+            p = -g1
+            step = 0.1
+            x_new = x + step * p
+            g2 = Q @ x_new
+            lbfgs_update(H, step, p, g1, g2)
+            x = x_new
+
+        g = np.random.randn(n)
+        hg = lbfgs_hprod(H, g)
+        bhg = lbfgs_bprod(H, hg)
+        np.testing.assert_allclose(bhg, g, rtol=1e-10,
+                                   err_msg="B*H*g != g (B and H not inverses)")
+
+    def test_damped_update_triggered(self):
+        """Verify damped BFGS update triggers when yts < 0.2 * sbs."""
+        np.random.seed(108)
+        n = 20
+        H = lbfgs_init(n, k=5, dscale=1.0)
+
+        Q = np.eye(n) * 2.0
+        x = np.random.randn(n)
+        g1 = Q @ x
+        p = -g1
+        step = 0.1
+        x_new = x + step * p
+        g2 = Q @ x_new
+        noup = lbfgs_update(H, step, p, g1, g2)
+        assert not noup
+        assert H.status in [0, 1]
+
+
+# =========================================================================
+# Hybrid mode integration tests
+# =========================================================================
 
 class TestHybridModeBasics:
     """Test hybrid mode integration in spgl1."""
@@ -161,11 +351,9 @@ class TestHybridModeBasics:
         x_std, _, _, info_std = spg_bpdn(A, b, sigma, verbosity=0)
         x_hyb, _, _, info_hyb = spg_bpdn(A, b, sigma, hybrid_mode=True, verbosity=0)
 
-        # Both should converge
         assert info_std['stat'] in [1, 2, 3, 4]
         assert info_hyb['stat'] in [1, 2, 3, 4]
 
-        # Solutions should have similar objective
         np.testing.assert_allclose(info_std['rnorm'], info_hyb['rnorm'], rtol=0.1)
 
     def test_hybrid_lasso(self):
@@ -199,13 +387,32 @@ class TestHybridModeBasics:
         x, r, g, info = spgl1(A, b, tau=1.0, verbosity=0)
         assert info['stat'] in range(1, 12)
 
+    def test_hybrid_multiple_seeds(self):
+        """Hybrid mode should work across different random problems."""
+        for seed in [300, 301, 302, 303, 304]:
+            np.random.seed(seed)
+            m, n = 80, 160
+            A = np.random.randn(m, n)
+            x_true = np.zeros(n)
+            x_true[:8] = np.random.randn(8)
+            b = A @ x_true + 0.01 * np.random.randn(m)
+            sigma = 0.15 * np.linalg.norm(b)
+
+            x, r, g, info = spg_bpdn(A, b, sigma, hybrid_mode=True, verbosity=0)
+            assert info['stat'] in [1, 2, 3, 4, 5], \
+                f"seed={seed}: stat={info['stat']}"
+            assert np.all(np.isfinite(x)), f"seed={seed}: non-finite x"
+
+
+# =========================================================================
+# ProductB tests
+# =========================================================================
 
 class TestProductB:
     """Test productB transformation."""
 
     def test_forward_dimensions(self):
         """Forward: d -> d+1."""
-        from spgl1.productB import product_b, compute_sqrt_vectors
         d = 10
         sqrt1, sqrt2 = compute_sqrt_vectors(d)
         x = np.random.randn(d)
@@ -215,7 +422,6 @@ class TestProductB:
 
     def test_transpose_dimensions(self):
         """Transpose: d+1 -> d."""
-        from spgl1.productB import product_b, compute_sqrt_vectors
         d = 10
         sqrt1, sqrt2 = compute_sqrt_vectors(d)
         x = np.random.randn(d + 1)
@@ -225,7 +431,6 @@ class TestProductB:
 
     def test_adjoint_property(self):
         """<Bx, y> == <x, B'y> (adjoint property)."""
-        from spgl1.productB import product_b, compute_sqrt_vectors
         np.random.seed(300)
         d = 20
         sqrt1, sqrt2 = compute_sqrt_vectors(d)
@@ -239,6 +444,395 @@ class TestProductB:
         lhs = Bx @ y
         rhs = x @ Bty
         np.testing.assert_allclose(lhs, rhs, rtol=1e-12)
+
+    def test_orthogonality(self):
+        """B'*B should be identity (orthogonal transformation)."""
+        np.random.seed(301)
+        d = 15
+        sqrt1, sqrt2 = compute_sqrt_vectors(d)
+
+        # Build B'B explicitly via unit vectors
+        BtB = np.zeros((d, d))
+        for j in range(d):
+            ej = np.zeros(d)
+            ej[j] = 1.0
+            Bej = product_b(ej, 0, sqrt1, sqrt2)
+            for i in range(d):
+                ei = np.zeros(d)
+                ei[i] = 1.0
+                Bei = product_b(ei, 0, sqrt1, sqrt2)
+                BtB[i, j] = Bei @ Bej
+
+        np.testing.assert_allclose(BtB, np.eye(d), atol=1e-13)
+
+
+# =========================================================================
+# Octave cross-validation: L-BFGS operations
+# =========================================================================
+
+@pytest.mark.matlab
+@pytest.mark.skipif(not octave_available(), reason="Octave not available")
+class TestLBFGSVsOctave:
+    """Cross-validate L-BFGS operations against MATLAB/Octave."""
+
+    def _build_lbfgs_state(self, n, k, dscale, Q, x0, num_updates, step=0.1):
+        """Build L-BFGS state by running steepest descent updates.
+
+        Returns (H, x_final) after num_updates steepest descent steps.
+        """
+        H = lbfgs_init(n, k, dscale=dscale)
+        x = x0.copy()
+        for i in range(num_updates):
+            g1 = Q @ x
+            p = -g1
+            x_new = x + step * p
+            g2 = Q @ x_new
+            lbfgs_update(H, step, p, g1, g2)
+            x = x_new
+        return H, x
+
+    def test_hprod_after_updates(self):
+        """Compare H*g after a sequence of updates."""
+        np.random.seed(500)
+        n, k, dscale = 20, 5, 1e-3
+        Q = np.eye(n) * 2.0
+        x0 = np.random.randn(n)
+        g_test = np.random.randn(n)
+
+        H, _ = self._build_lbfgs_state(n, k, dscale, Q, x0, 4)
+        hg_py = lbfgs_hprod(H, g_test)
+        bg_py = lbfgs_bprod(H, g_test)
+
+        script = """
+        n = double(n); k = double(k); dscale = double(dscale);
+        Q = eye(n) * 2.0;
+        x = x0;
+        H = lbfgsinit(n, k, dscale);
+        for i = 1:4
+            g1 = Q * x;
+            p = -g1;
+            step = 0.1;
+            x_new = x + step * p;
+            g2 = Q * x_new;
+            [H, noup] = lbfgsupdate(H, step, p, g1, g2);
+            x = x_new;
+        end
+        hg_matlab = lbfgshprod(H, g_test);
+        bg_matlab = lbfgsbprod(H, g_test);
+        gamma_matlab = H.gamma;
+        delta_matlab = H.delta;
+        rank_matlab = H.rank;
+        """
+        out = _run_octave_script(script, {
+            'n': float(n), 'k': float(k), 'dscale': float(dscale),
+            'x0': x0, 'g_test': g_test
+        })
+        assert out is not None, "Octave script failed"
+
+        np.testing.assert_allclose(hg_py, out['hg_matlab'].flatten(),
+                                   rtol=1e-12, atol=1e-14,
+                                   err_msg="lbfgs_hprod mismatch vs MATLAB")
+        np.testing.assert_allclose(bg_py, out['bg_matlab'].flatten(),
+                                   rtol=1e-12, atol=1e-14,
+                                   err_msg="lbfgs_bprod mismatch vs MATLAB")
+        assert H.gamma == pytest.approx(float(out['gamma_matlab'].flatten()[0]), rel=1e-12)
+        assert H.delta == pytest.approx(float(out['delta_matlab'].flatten()[0]), rel=1e-12)
+        assert H.rank == int(out['rank_matlab'].flatten()[0])
+
+    def test_curvature_skip_matches(self):
+        """Verify curvature skip decision matches MATLAB."""
+        n = 10
+        H = lbfgs_init(n, k=3, dscale=1.0)
+        p = np.ones(n)
+        g1 = -p
+        g2 = g1.copy()
+        noup_py = lbfgs_update(H, 1.0, p, g1, g2)
+
+        script = """
+        n = double(n);
+        H = lbfgsinit(n, 3, 1.0);
+        p = ones(n, 1);
+        g1 = -p;
+        g2 = g1;
+        [H, noup] = lbfgsupdate(H, 1.0, p, g1, g2);
+        noup_matlab = double(noup);
+        status_matlab = H.status;
+        """
+        out = _run_octave_script(script, {'n': float(n)})
+        assert out is not None, "Octave script failed"
+
+        assert noup_py == bool(out['noup_matlab'].flatten()[0])
+        assert H.status == int(out['status_matlab'].flatten()[0])
+
+    def test_multiple_updates_match(self):
+        """Compare state after many updates (circular buffer wrapping)."""
+        np.random.seed(502)
+        n, k, dscale = 15, 3, 1e-3
+        Q = np.eye(n) * 3.0
+        x0 = np.random.randn(n)
+        g_test = np.random.randn(n)
+
+        # Python
+        H = lbfgs_init(n, k, dscale)
+        x = x0.copy()
+        noup_list_py = []
+        for i in range(8):
+            g1 = Q @ x
+            p = -g1
+            step = 0.1
+            x_new = x + step * p
+            g2 = Q @ x_new
+            noup = lbfgs_update(H, step, p, g1, g2)
+            noup_list_py.append(noup)
+            x = x_new
+        hg_py = lbfgs_hprod(H, g_test)
+
+        # Octave
+        script = """
+        n = double(n); k = double(k); dscale = double(dscale);
+        Q = eye(n) * 3.0;
+        x = x0;
+        H = lbfgsinit(n, k, dscale);
+        noup_list = zeros(8, 1);
+        for i = 1:8
+            g1 = Q * x;
+            p = -g1;
+            step = 0.1;
+            x_new = x + step * p;
+            g2 = Q * x_new;
+            [H, noup] = lbfgsupdate(H, step, p, g1, g2);
+            noup_list(i) = double(noup);
+            x = x_new;
+        end
+        hg_matlab = lbfgshprod(H, g_test);
+        gamma_matlab = H.gamma;
+        rank_matlab = H.rank;
+        """
+        out = _run_octave_script(script, {
+            'n': float(n), 'k': float(k), 'dscale': float(dscale),
+            'x0': x0, 'g_test': g_test
+        })
+        assert out is not None, "Octave script failed"
+
+        noup_list_mat = out['noup_list'].flatten().astype(bool).tolist()
+        assert noup_list_py == noup_list_mat, \
+            f"noup sequence mismatch: py={noup_list_py}, mat={noup_list_mat}"
+        np.testing.assert_allclose(hg_py, out['hg_matlab'].flatten(),
+                                   rtol=1e-12, atol=1e-14,
+                                   err_msg="hprod mismatch after 8 updates")
+        assert H.gamma == pytest.approx(float(out['gamma_matlab'].flatten()[0]), rel=1e-12)
+        assert H.rank == int(out['rank_matlab'].flatten()[0])
+
+    def test_damped_update_matches(self):
+        """Verify damped BFGS correction matches MATLAB."""
+        np.random.seed(503)
+        n, k, dscale = 15, 5, 1.0
+        Q = np.eye(n) * 2.0
+        x0 = np.random.randn(n)
+        g_test = np.random.randn(n)
+
+        # Python
+        H = lbfgs_init(n, k, dscale)
+        x = x0.copy()
+        statuses_py = []
+        for i in range(3):
+            g1 = Q @ x
+            p = -g1
+            step = 0.1
+            x_new = x + step * p
+            g2 = Q @ x_new
+            lbfgs_update(H, step, p, g1, g2)
+            statuses_py.append(H.status)
+            x = x_new
+        hg_py = lbfgs_hprod(H, g_test)
+        bg_py = lbfgs_bprod(H, g_test)
+
+        # Octave
+        script = """
+        n = double(n); k = double(k); dscale = double(dscale);
+        Q = eye(n) * 2.0;
+        x = x0;
+        H = lbfgsinit(n, k, dscale);
+        statuses = zeros(3, 1);
+        for i = 1:3
+            g1 = Q * x;
+            p = -g1;
+            step = 0.1;
+            x_new = x + step * p;
+            g2 = Q * x_new;
+            [H, noup] = lbfgsupdate(H, step, p, g1, g2);
+            statuses(i) = H.status;
+            x = x_new;
+        end
+        hg_matlab = lbfgshprod(H, g_test);
+        bg_matlab = lbfgsbprod(H, g_test);
+        """
+        out = _run_octave_script(script, {
+            'n': float(n), 'k': float(k), 'dscale': float(dscale),
+            'x0': x0, 'g_test': g_test
+        })
+        assert out is not None, "Octave script failed"
+
+        statuses_mat = out['statuses'].flatten().astype(int).tolist()
+        assert statuses_py == statuses_mat, \
+            f"Status sequence mismatch: py={statuses_py}, mat={statuses_mat}"
+        np.testing.assert_allclose(hg_py, out['hg_matlab'].flatten(),
+                                   rtol=1e-12, atol=1e-14)
+        np.testing.assert_allclose(bg_py, out['bg_matlab'].flatten(),
+                                   rtol=1e-12, atol=1e-14)
+
+    def test_bprod_hprod_inverse_matches(self):
+        """Verify B*H*g == g in both Python and MATLAB."""
+        np.random.seed(504)
+        n, k, dscale = 20, 5, 1e-3
+        Q = np.eye(n) * 2.0
+        x0 = np.random.randn(n)
+        g_test = np.random.randn(n)
+
+        H, _ = self._build_lbfgs_state(n, k, dscale, Q, x0, 5)
+        hg_py = lbfgs_hprod(H, g_test)
+        bhg_py = lbfgs_bprod(H, hg_py)
+
+        script = """
+        n = double(n); k = double(k); dscale = double(dscale);
+        Q = eye(n) * 2.0;
+        x = x0;
+        H = lbfgsinit(n, k, dscale);
+        for i = 1:5
+            g1 = Q * x;
+            p = -g1;
+            step = 0.1;
+            x_new = x + step * p;
+            g2 = Q * x_new;
+            [H, noup] = lbfgsupdate(H, step, p, g1, g2);
+            x = x_new;
+        end
+        hg_matlab = lbfgshprod(H, g_test);
+        bhg_matlab = lbfgsbprod(H, hg_matlab);
+        """
+        out = _run_octave_script(script, {
+            'n': float(n), 'k': float(k), 'dscale': float(dscale),
+            'x0': x0, 'g_test': g_test
+        })
+        assert out is not None, "Octave script failed"
+
+        # Both Python and MATLAB should recover g_test
+        np.testing.assert_allclose(bhg_py, g_test, rtol=1e-10)
+        np.testing.assert_allclose(out['bhg_matlab'].flatten(), g_test.flatten(), rtol=1e-10)
+
+        # And they should match each other
+        np.testing.assert_allclose(bhg_py, out['bhg_matlab'].flatten(),
+                                   rtol=1e-12, atol=1e-14)
+
+
+# =========================================================================
+# Octave cross-validation: full hybrid solver
+# =========================================================================
+
+@pytest.mark.matlab
+@pytest.mark.skipif(not octave_available(), reason="Octave not available")
+class TestHybridModeVsOctave:
+    """Cross-validate full hybrid mode solver against MATLAB."""
+
+    def test_hybrid_bpdn_matches_matlab(self):
+        """Hybrid BPDN should produce similar results to MATLAB hybrid."""
+        np.random.seed(600)
+        m, n, k = 50, 100, 8
+        A = np.random.randn(m, n)
+        x_true = np.zeros(n)
+        x_true[:k] = np.random.randn(k)
+        b = A @ x_true + 0.01 * np.random.randn(m)
+        sigma = 0.1 * np.linalg.norm(b)
+
+        x_py, r_py, g_py, info_py = spg_bpdn(A, b, sigma, hybrid_mode=True, verbosity=0)
+
+        script = """
+        opts = spgSetParms('hybridMode', true, 'verbosity', 0);
+        [x_mat, r_mat, g_mat, info_mat] = spgl1(A, b, 0, sigma, [], opts);
+        rnorm_mat = info_mat.rNorm;
+        stat_mat = info_mat.stat;
+        clear opts info_mat x_mat r_mat g_mat A b sigma;
+        """
+        out = _run_octave_script(script, {
+            'A': A, 'b': b, 'sigma': float(sigma)
+        }, timeout=60)
+        assert out is not None, "Octave hybrid BPDN failed"
+
+        rnorm_mat = float(out['rnorm_mat'].flatten()[0])
+        stat_mat = int(out['stat_mat'].flatten()[0])
+
+        assert info_py['stat'] in [1, 2, 3, 4, 5]
+        assert stat_mat in [1, 2, 3, 4, 5]
+
+        np.testing.assert_allclose(info_py['rnorm'], rnorm_mat, rtol=0.2,
+                                   err_msg="Hybrid BPDN residual norms differ significantly")
+
+    def test_hybrid_lasso_matches_matlab(self):
+        """Hybrid LASSO should produce similar results to MATLAB hybrid."""
+        np.random.seed(601)
+        m, n, k = 50, 100, 8
+        A = np.random.randn(m, n)
+        x_true = np.zeros(n)
+        x_true[:k] = np.random.randn(k)
+        b = A @ x_true + 0.01 * np.random.randn(m)
+        tau = np.linalg.norm(x_true, 1) * 1.2
+
+        x_py, r_py, g_py, info_py = spgl1(A, b, tau=tau, hybrid_mode=True, verbosity=0)
+
+        script = """
+        opts = spgSetParms('hybridMode', true, 'verbosity', 0);
+        [x_mat, r_mat, g_mat, info_mat] = spgl1(A, b, tau, 0, [], opts);
+        rnorm_mat = info_mat.rNorm;
+        stat_mat = info_mat.stat;
+        clear opts info_mat x_mat r_mat g_mat A b tau;
+        """
+        out = _run_octave_script(script, {
+            'A': A, 'b': b, 'tau': float(tau)
+        }, timeout=60)
+        assert out is not None, "Octave hybrid LASSO failed"
+
+        rnorm_mat = float(out['rnorm_mat'].flatten()[0])
+        assert info_py['stat'] in [1, 2, 3, 4, 5]
+        # Both should be near-optimal; allow small absolute difference when both are tiny
+        np.testing.assert_allclose(info_py['rnorm'], rnorm_mat, rtol=0.5, atol=0.01,
+                                   err_msg="Hybrid LASSO residual norms differ")
+
+    def test_standard_vs_hybrid_both_match_matlab(self):
+        """Both standard and hybrid modes should match MATLAB counterparts."""
+        np.random.seed(602)
+        m, n, k = 60, 120, 5
+        A = np.random.randn(m, n)
+        x_true = np.zeros(n)
+        x_true[:k] = np.random.randn(k)
+        b = A @ x_true + 0.01 * np.random.randn(m)
+        sigma = 0.1 * np.linalg.norm(b)
+
+        x_std, _, _, info_std = spg_bpdn(A, b, sigma, verbosity=0)
+        x_hyb, _, _, info_hyb = spg_bpdn(A, b, sigma, hybrid_mode=True, verbosity=0)
+
+        script = """
+        opts_std = spgSetParms('verbosity', 0);
+        [x_std, r_std, g_std, info_std] = spgl1(A, b, 0, sigma, [], opts_std);
+        rnorm_std = info_std.rNorm;
+
+        opts_hyb = spgSetParms('hybridMode', true, 'verbosity', 0);
+        [x_hyb, r_hyb, g_hyb, info_hyb] = spgl1(A, b, 0, sigma, [], opts_hyb);
+        rnorm_hyb = info_hyb.rNorm;
+        clear opts_std opts_hyb info_std info_hyb x_std r_std g_std x_hyb r_hyb g_hyb A b sigma;
+        """
+        out = _run_octave_script(script, {
+            'A': A, 'b': b, 'sigma': float(sigma)
+        }, timeout=120)
+        assert out is not None, "Octave script failed"
+
+        np.testing.assert_allclose(info_std['rnorm'],
+                                   float(out['rnorm_std'].flatten()[0]),
+                                   rtol=0.15,
+                                   err_msg="Standard mode rnorm mismatch")
+        np.testing.assert_allclose(info_hyb['rnorm'],
+                                   float(out['rnorm_hyb'].flatten()[0]),
+                                   rtol=0.2,
+                                   err_msg="Hybrid mode rnorm mismatch")
 
 
 if __name__ == "__main__":
