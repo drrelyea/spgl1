@@ -107,7 +107,7 @@ class TestLBFGSBasics:
         np.testing.assert_allclose(p, 0.5 * g)
 
     def test_update_and_hprod(self):
-        """Test update followed by H*g produces valid output."""
+        """Test update stores vectors and changes H*g output."""
         np.random.seed(100)
         n = 30
         H = lbfgs_init(n, k=5, dscale=1e-3)
@@ -122,12 +122,28 @@ class TestLBFGSBasics:
         x_new = x + step * p
         g2 = Q @ x_new
 
-        noup = lbfgs_update(H, step, p, g1, g2)
-        assert H.rank >= 0
+        # Before update: H*g = gamma * g (no history)
+        g_test = np.random.randn(n)
+        hg_before = lbfgs_hprod(H, g_test)
+        np.testing.assert_allclose(hg_before, H.gamma * g_test)
 
-        d = lbfgs_hprod(H, g2)
-        assert d.shape == (n,)
-        assert np.all(np.isfinite(d))
+        noup = lbfgs_update(H, step, p, g1, g2)
+
+        # After update: rank increased, gamma changed, H*g differs
+        assert not noup, "Update should not be skipped for valid curvature"
+        assert H.rank == 1, "Rank should be 1 after first update"
+        assert H.status in [0, 1], "Status should be 0 (update) or 1 (damped)"
+
+        # Verify stored vectors
+        s_stored = step * p
+        y_stored = g2 - g1
+        # The update may apply damping, so just check s is stored correctly
+        np.testing.assert_allclose(H.S[:, H.jNew], s_stored)
+
+        # H*g should now differ from gamma*g
+        hg_after = lbfgs_hprod(H, g_test)
+        assert not np.allclose(hg_after, H.gamma * g_test), \
+            "H*g should differ from gamma*g after update"
 
     def test_update_curvature_skip(self):
         """Test that updates with bad curvature are handled."""
@@ -143,7 +159,7 @@ class TestLBFGSBasics:
         assert H.status == 2
 
     def test_multiple_updates_circular_buffer(self):
-        """Test that circular buffer wraps correctly."""
+        """Test that circular buffer wraps and maintains only k newest pairs."""
         np.random.seed(102)
         n = 20
         k = 3
@@ -152,6 +168,8 @@ class TestLBFGSBasics:
         Q = np.eye(n) * 2.0
         x = np.random.randn(n)
 
+        # Store the step vectors for verification
+        all_s_vectors = []
         for i in range(10):
             g1 = Q @ x
             p = -g1
@@ -159,12 +177,30 @@ class TestLBFGSBasics:
             x_new = x + step * p
             g2 = Q @ x_new
             lbfgs_update(H, step, p, g1, g2)
+            all_s_vectors.append(step * p)
             x = x_new
 
+        # After 10 updates with k=3: rank should be exactly k
+        assert H.rank == k, f"Rank should be {k}, got {H.rank}"
+
+        # Buffer should contain the 3 most recent s vectors
+        # Find which slots are valid
+        valid_slots = np.where(H.valid)[0]
+        assert len(valid_slots) == k
+
+        # The newest 3 s vectors should be in the buffer
+        newest_s = all_s_vectors[-k:]
+        stored_s = [H.S[:, slot] for slot in valid_slots]
+
+        # Each of the newest s vectors should match one stored vector
+        for s_new in newest_s:
+            found = any(np.allclose(s_new, s_stored) for s_stored in stored_s)
+            assert found, "Newest s vector not found in buffer"
+
+        # Verify H*g still produces descent direction
         g = Q @ x
-        d = lbfgs_hprod(H, g)
-        assert np.all(np.isfinite(d))
-        assert H.rank <= k
+        d = lbfgs_hprod(H, -g)
+        assert g @ d < 0, "Should still produce descent direction"
 
     def test_hprod_descent_direction(self):
         """H*(-g) should generally be a descent direction."""
@@ -299,22 +335,58 @@ class TestLBFGSBasics:
         np.testing.assert_allclose(bhg, g, rtol=1e-10,
                                    err_msg="B*H*g != g (B and H not inverses)")
 
-    def test_damped_update_triggered(self):
-        """Verify damped BFGS update triggers when yts < 0.2 * sbs."""
+    def test_damped_update_status_values(self):
+        """Verify status correctly reflects update type (normal=0, damped=1, skip=2).
+
+        The L-BFGS update has three outcomes:
+        - status=0: Normal update (curvature good, no damping needed)
+        - status=1: Damped update (curvature good, but yts < 0.2*sbs)
+        - status=2: Skipped (curvature condition failed: gtp2 <= 0.91*gtp1)
+        """
         np.random.seed(108)
         n = 20
-        H = lbfgs_init(n, k=5, dscale=1.0)
+        k = 5
 
+        # Test 1: Normal update on well-conditioned quadratic
+        H = lbfgs_init(n, k, dscale=1.0)
         Q = np.eye(n) * 2.0
         x = np.random.randn(n)
         g1 = Q @ x
         p = -g1
-        step = 0.1
+        step = 0.3  # Larger step ensures good curvature
         x_new = x + step * p
         g2 = Q @ x_new
+
         noup = lbfgs_update(H, step, p, g1, g2)
-        assert not noup
-        assert H.status in [0, 1]
+        assert not noup, "Should not skip update"
+        assert H.status in [0, 1], f"Status should be 0 or 1, got {H.status}"
+
+        # Test 2: Verify skip condition (status=2)
+        H2 = lbfgs_init(n, k, dscale=1.0)
+        p = np.ones(n)
+        g1 = -p  # gtp1 = -n
+        g2 = g1.copy()  # gtp2 = -n, so gtp2 <= 0.91*gtp1
+        noup = lbfgs_update(H2, 1.0, p, g1, g2)
+        assert noup, "Should skip update"
+        assert H2.status == 2, f"Status should be 2 (skip), got {H2.status}"
+
+        # Test 3: After multiple updates, verify update still works
+        H3 = lbfgs_init(n, k, dscale=1e-3)
+        x = np.random.randn(n)
+        statuses = []
+        for i in range(5):
+            g1 = Q @ x
+            p = -g1
+            step = 0.2
+            x_new = x + step * p
+            g2 = Q @ x_new
+            lbfgs_update(H3, step, p, g1, g2)
+            statuses.append(H3.status)
+            x = x_new
+
+        # All should be successful updates (0 or 1)
+        assert all(s in [0, 1] for s in statuses), \
+            f"All statuses should be 0 or 1, got {statuses}"
 
 
 # =========================================================================
@@ -357,7 +429,7 @@ class TestHybridModeBasics:
         np.testing.assert_allclose(info_std['rnorm'], info_hyb['rnorm'], rtol=0.1)
 
     def test_hybrid_lasso(self):
-        """Hybrid mode with LASSO (fixed tau)."""
+        """Hybrid mode with LASSO (fixed tau) produces valid L1-constrained solution."""
         np.random.seed(202)
         m, n = 100, 200
         A = np.random.randn(m, n)
@@ -367,8 +439,25 @@ class TestHybridModeBasics:
         tau = np.linalg.norm(x_true, 1) * 1.5
 
         x, r, g, info = spgl1(A, b, tau=tau, hybrid_mode=True, verbosity=0)
-        assert info['stat'] in [1, 2, 3, 4]
+
+        # Should converge
+        assert info['stat'] in [1, 2, 3, 4], f"Did not converge: stat={info['stat']}"
         assert np.all(np.isfinite(x))
+
+        # L1 norm should respect constraint (within tolerance)
+        x_norm1 = np.linalg.norm(x, 1)
+        assert x_norm1 <= tau * 1.01, f"L1 norm {x_norm1} exceeds tau {tau}"
+
+        # Residual should be reasonable
+        r_computed = b - A @ x
+        np.testing.assert_allclose(r, r_computed, rtol=1e-10)
+
+        # Solution should recover some of the true signal structure
+        # (at least the largest components should be in the right places)
+        top5_true = np.argsort(np.abs(x_true))[-5:]
+        top5_recovered = np.argsort(np.abs(x))[-5:]
+        overlap = len(set(top5_true) & set(top5_recovered))
+        assert overlap >= 3, f"Poor support recovery: only {overlap}/5 overlap"
 
     def test_hybrid_rejects_complex(self):
         """Hybrid mode should reject complex problems."""
@@ -379,13 +468,28 @@ class TestHybridModeBasics:
             spgl1(A, b, tau=1.0, hybrid_mode=True, iscomplex=True, verbosity=0)
 
     def test_hybrid_default_off(self):
-        """Hybrid mode should be off by default."""
+        """Verify hybrid_mode defaults to False and doesn't affect standard mode."""
         np.random.seed(204)
         m, n = 50, 100
         A = np.random.randn(m, n)
-        b = np.random.randn(m)
-        x, r, g, info = spgl1(A, b, tau=1.0, verbosity=0)
-        assert info['stat'] in range(1, 12)
+        x_true = np.zeros(n)
+        x_true[:3] = np.random.randn(3)
+        b = A @ x_true + 0.01 * np.random.randn(m)
+        sigma = 0.1 * np.linalg.norm(b)
+
+        # Run without specifying hybrid_mode (should default to False)
+        x_default, _, _, info_default = spg_bpdn(A, b, sigma, verbosity=0)
+
+        # Run with explicit hybrid_mode=False
+        x_explicit, _, _, info_explicit = spg_bpdn(A, b, sigma, hybrid_mode=False, verbosity=0)
+
+        # Both should produce identical results (same code path)
+        np.testing.assert_allclose(x_default, x_explicit, rtol=1e-12,
+                                   err_msg="Default should equal explicit hybrid_mode=False")
+        assert info_default['niters'] == info_explicit['niters'], \
+            "Iteration counts should match"
+        assert info_default['stat'] == info_explicit['stat'], \
+            "Exit status should match"
 
     def test_hybrid_multiple_seeds(self):
         """Hybrid mode should work across different random problems."""
