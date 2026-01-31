@@ -865,6 +865,8 @@ def spgl1(
     relgap_min_f=1.0,
     relgap_min_r=1.0,
     max_runtime=np.inf,
+    hybrid_mode=False,
+    lbfgs_hist=8,
 ):
     r"""SPGL1 solver.
 
@@ -966,6 +968,12 @@ def spgl1(
         Maximum runtime in seconds. The solver will exit with EXIT_RUNTIME
         if this limit is exceeded. Default is np.inf (no limit).
         The runtime is checked adaptively to minimize overhead.
+    hybrid_mode : bool, optional
+        Enable L-BFGS hybrid mode for faster convergence (default: False).
+        When enabled, uses quasi-Newton search directions on identified
+        support set. Only applies to real-valued L1 problems.
+    lbfgs_hist : int, optional
+        L-BFGS history size (default: 8). Only used if hybrid_mode=True.
 
     Returns
     -------
@@ -1070,6 +1078,11 @@ def spgl1(
     test_updatetau = False  # Previous step did not update tau
     runtime_check_every = 1  # Check runtime every # iterations
 
+    # Hybrid mode imports and validation
+    if hybrid_mode:
+        from spgl1.lbfgs import lbfgs_init, lbfgs_update, lbfgs_hprod
+        from spgl1.productB import product_b, compute_sqrt_vectors
+
     # Determine initial x and see if problem is complex
     realx = np.isreal(A).all() and np.isreal(b).all()
     if x0 is None:
@@ -1080,6 +1093,14 @@ def spgl1(
     # Override realx when iscomplex flag is set
     if iscomplex:
         realx = False
+
+    # Validate hybrid mode: only applies to real-valued L1 problems
+    l1_mode = (project is _norm_l1_project)
+    if hybrid_mode:
+        if not (realx and l1_mode):
+            raise ValueError(
+                "Hybrid mode only applies to non-complex basis pursuit (L1) problems"
+            )
 
     # Check if all weights (if any) are strictly positive. In previous
     # versions we also checked if the number of weights was equal to
@@ -1182,6 +1203,21 @@ def spgl1(
     fbest = f
     xbest = x.copy()
     fold = f
+
+    # Initialize hybrid mode state
+    if hybrid_mode:
+        xabs = np.abs(x)
+        xnorm1_init = np.sum(xabs)
+        if abs(xnorm1_init - tau) / max(1.0, tau) < 1e-8:
+            hybrid_support = np.zeros(n, dtype=bool)  # Interior of L1 ball
+        else:
+            hybrid_support = xabs >= 1e-9  # Boundary
+        hybrid_H = None
+        hybrid_sqrt1 = None
+        hybrid_sqrt2 = None
+        flag_use_hessian = False
+    else:
+        flag_use_hessian = False
 
     # Initialize dual root-finding variables
     f_dual_max = -np.inf
@@ -1351,6 +1387,20 @@ def spgl1(
                     # Reset the function value history.
                     last_fv = np.full(10, -np.inf)
                     last_fv[1] = f
+                    fbest = f
+                    xbest = x.copy()
+
+                # Reset Hessian (always on tau update, not just decrease)
+                if hybrid_mode:
+                    hybrid_H = None
+                    flag_use_hessian = False
+
+                # Reset dual objective tracking
+                f_dual_max = -np.inf
+                gnorm_best = 0.0
+
+                # Reset status
+                stat = False
 
         # Too many iterations and not converged.
         if not stat and niters >= iter_lim:
@@ -1439,21 +1489,100 @@ def spgl1(
         rold = r.copy()
 
         while 1:
-            # Projected gradient step and linesearch.
-            (
-                f,
-                x,
-                r,
-                niter_line,
-                stepg,
-                lnerr,
-                time_project_curvy,
-                time_matprod_curvy,
-            ) = _spg_line_curvy(x, gstep * g, max(last_fv), A, b, project, weights, tau, mu)
-            time_project += time_project_curvy
-            time_matprod += time_matprod_curvy
-            nprodA += niter_line + 1
-            nline_tot += niter_line
+            # ===================================
+            # Try a quasi-Newton direction first
+            # ===================================
+            lnerr = True  # Assume failure; set to False if hybrid succeeds
+            if flag_use_hessian:
+                try:
+                    # Step 1. Get search direction
+                    if not np.any(hybrid_support):
+                        # Interior of crosspolytope
+                        d = lbfgs_hprod(hybrid_H, -g)
+                    else:
+                        d = -g.copy()
+
+                        # Project gradient onto the coefficient space
+                        d_trans = product_b(
+                            hybrid_signs * d[hybrid_support], 1,
+                            hybrid_sqrt1, hybrid_sqrt2
+                        )
+
+                        # If ||dTrans|| is tiny, direction is (near) orthogonal to the face
+                        if np.linalg.norm(d_trans, 2) <= 1e-10 * max(1.0, np.linalg.norm(d, 2)):
+                            if single_tau:
+                                stat = EXIT_OPTIMAL
+                            else:
+                                test_updatetau = True
+                        else:
+                            # Get quasi-Newton search direction
+                            d_quasi = lbfgs_hprod(hybrid_H, d_trans)
+
+                            # Convert to global domain
+                            d = np.zeros(n)
+                            d_support = hybrid_signs * product_b(
+                                d_quasi, 0, hybrid_sqrt1, hybrid_sqrt2
+                            )
+                            d[hybrid_support] = d_support
+
+                    if not stat:
+                        # Step 2. Determine first non-zero entry to hit zero
+                        s1 = ((d < 0) & (x > 0)) | ((d > 0) & (x < 0))
+                        if np.any(s1):
+                            gamma_step = -np.max(x[s1] / d[s1])
+                        else:
+                            gamma_step = np.inf
+
+                        start_time_matvec = time.time()
+                        w = A.matvec(d)
+                        time_matprod += time.time() - start_time_matvec
+                        nprodA += 1
+
+                        # Step 3. Compute the optimal step length beta
+                        enumerator = w @ r
+                        denominator = w @ w
+                        if mu > 0:
+                            enumerator = enumerator - mu * (x @ d)
+                            denominator = denominator + mu * (d @ d)
+
+                        beta = enumerator / denominator
+                        if beta <= 1e-11:
+                            pass  # lnerr stays True → fall through
+                        else:
+                            beta = min(beta, gamma_step)
+                            # Take the hybrid step
+                            x = xold + beta * d
+                            r = r - beta * w  # Avoid evaluating A*x
+                            f = (r @ r) / 2.0
+                            if mu > 0:
+                                f = f + (mu / 2.0) * (x @ x)
+                            stepg = beta
+                            nline_tot += 1
+
+                            # Reset function value history after successful hybrid step
+                            last_fv[:] = f
+                            lnerr = False
+                except Exception:
+                    lnerr = True
+
+            # ---------------------------------------------------------------
+            # Projected gradient step and linesearch (fallback or standard)
+            # ---------------------------------------------------------------
+            if lnerr:
+                (
+                    f,
+                    x,
+                    r,
+                    niter_line,
+                    stepg,
+                    lnerr,
+                    time_project_curvy,
+                    time_matprod_curvy,
+                ) = _spg_line_curvy(x, gstep * g, max(last_fv), A, b, project, weights, tau, mu)
+                time_project += time_project_curvy
+                time_matprod += time_matprod_curvy
+                nprodA += niter_line + 1
+                nline_tot += niter_line
             if nprodA + nprodAt > max_matvec:
                 stat = EXIT_MATVEC_LIMIT
                 break
@@ -1584,6 +1713,107 @@ def spgl1(
                     gstep = min(step_max, max(step_min, sts / sty))
             else:
                 gstep = min(step_max, gstep)
+
+            # ---------------------------------------------------------------
+            # Update Hessian approximation (hybrid mode)
+            # ---------------------------------------------------------------
+            if not np.isreal(x).all():
+                hybrid_mode = False
+            if hybrid_mode:
+                support_old = hybrid_support.copy()
+                absx = np.abs(x)
+                xnorm1_h = np.sum(absx)
+
+                # Step 1. Determine support
+                if abs(xnorm1_h - tau) / max(1.0, tau) > 1e-8:
+                    hybrid_support = np.zeros(n, dtype=bool)  # Interior
+                    n_support = n + 1
+                else:
+                    hybrid_support = absx > 1e-9
+                    n_support = int(np.sum(hybrid_support))
+
+                # Step 2. Check if Hessian should be updated
+                flag_update_hessian = (
+                    n_support > 1 and
+                    n_support <= m and
+                    niters > 1 and
+                    not lnerr and
+                    np.array_equal(hybrid_support, support_old) and
+                    np.array_equal(
+                        np.sign(x[hybrid_support]),
+                        np.sign(xold[hybrid_support])
+                    )
+                )
+
+                # Step 3. Check self-projection condition
+                if flag_update_hessian:
+                    if np.any(hybrid_support):
+                        # Boundary of crosspolytope
+                        d_chk = -g
+                        s1_chk = ((d_chk < 0) & (x > 0)) | ((d_chk > 0) & (x < 0))
+                        s2_chk = ((d_chk <= 0) & (x < 0)) | ((d_chk >= 0) & (x > 0))
+                        s3_chk = ~(s1_chk | s2_chk)
+
+                        sum1 = np.sum(np.abs(d_chk[s1_chk]))
+                        sum2 = np.sum(np.abs(d_chk[s2_chk]))
+                        sum3 = np.sum(np.abs(d_chk[s3_chk]))
+
+                        if sum1 > sum2 + sum3:
+                            flag_self_proj = False
+                        elif sum1 < sum2 + sum3:
+                            n_supp = np.sum(hybrid_support)
+                            if n_supp > 0:
+                                flag_self_proj = (
+                                    np.max(np.abs(d_chk[s3_chk]), initial=0) <=
+                                    (sum1 + sum2) / n_supp
+                                )
+                            else:
+                                flag_self_proj = False
+                        else:
+                            flag_self_proj = (sum3 == 0)
+                    else:
+                        # Interior of crosspolytope
+                        flag_self_proj = True
+
+                    if not flag_self_proj:
+                        flag_update_hessian = False
+
+                # Step 4. Reset or update Hessian approximation
+                if flag_update_hessian:
+                    if hybrid_H is None:
+                        if not np.any(hybrid_support):
+                            # Interior
+                            hybrid_H = lbfgs_init(n, lbfgs_hist, 1e-3)
+                        else:
+                            # Boundary
+                            hybrid_signs = np.sign(x[hybrid_support])
+                            hybrid_H = lbfgs_init(n_support - 1, lbfgs_hist, 1e-3)
+
+                    # Compute sqrt vectors if needed
+                    if np.any(hybrid_support):
+                        if hybrid_sqrt1 is None or len(hybrid_sqrt1) != n:
+                            hybrid_sqrt1, hybrid_sqrt2 = compute_sqrt_vectors(n)
+
+                    # Update Hessian approximation
+                    s_iter = x - xold
+                    if not np.any(hybrid_support):
+                        lbfgs_update(hybrid_H, 1, s_iter, gold, g)
+                    else:
+                        lbfgs_update(
+                            hybrid_H, 1,
+                            product_b(hybrid_signs * s_iter[hybrid_support], 1,
+                                      hybrid_sqrt1, hybrid_sqrt2),
+                            product_b(hybrid_signs * gold[hybrid_support], 1,
+                                      hybrid_sqrt1, hybrid_sqrt2),
+                            product_b(hybrid_signs * g[hybrid_support], 1,
+                                      hybrid_sqrt1, hybrid_sqrt2),
+                        )
+
+                    flag_use_hessian = True
+                else:
+                    flag_use_hessian = False
+                    hybrid_H = None
+
             break  # Leave while loop. This is done to allow stopping the
             # computations at any time within the loop if max_matvec is
             # reached. If this is not the case, the loop is stopped here.
