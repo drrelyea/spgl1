@@ -15,6 +15,7 @@ __all__ = [
     "spg_bpdn",
     "spg_lasso",
     "spg_mmv",
+    "spg_group",
 ]
 
 
