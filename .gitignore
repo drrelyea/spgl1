@@ -26,3 +26,6 @@ spgl1.egg-info/
 docs/build/
 docs/source/api/generated
 docs/source/tutorials
+
+# Claude Code
+CLAUDE.md
