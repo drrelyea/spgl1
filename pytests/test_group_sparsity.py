@@ -282,7 +282,7 @@ class TestGroupSparseVsOctave:
 
         # Solutions should be similar (not identical due to solver paths)
         # Check objective values match
-        rnorm_oct = float(np.asarray(info_oct['rNorm']).flat[0])
+        rnorm_oct = np.asarray(info_oct['rNorm']).flatten()[0].item()
         assert abs(info_py['rnorm'] - rnorm_oct) < 1e-6, \
             f"Python rnorm={info_py['rnorm']}, Octave rnorm={rnorm_oct}"
 
@@ -316,7 +316,7 @@ class TestGroupSparseVsOctave:
         g_oct = result['outputs'][2].flatten()
         info_oct = result['outputs'][3]
 
-        rnorm_oct = float(np.asarray(info_oct['rNorm']).flat[0])
+        rnorm_oct = np.asarray(info_oct['rNorm']).flatten()[0].item()
 
         # Both solvers should produce reasonable solutions
         # Python converges to near-zero residual; Octave may take different path

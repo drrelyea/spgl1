@@ -75,7 +75,7 @@ class TestSolverBasics:
         assert info_py['niters'] > 0, "Python didn't iterate"
 
         # MATLAB should iterate
-        iter_mat = int(np.asarray(info_mat['iter']).flat[0])
+        iter_mat = np.asarray(info_mat['iter']).flatten()[0].item()
         assert iter_mat > 0, "MATLAB didn't iterate"
 
     def test_sparsity_promoted(self, octave, random_problem):
@@ -121,7 +121,7 @@ class TestNumericalBehavior:
         info_mat = result['outputs'][3]
 
         rnorm_py = info_py['rnorm']
-        rnorm_mat = float(np.asarray(info_mat['rNorm']).flat[0])
+        rnorm_mat = np.asarray(info_mat['rNorm']).flatten()[0].item()
 
         # Residuals should be in same order of magnitude (within 10x)
         ratio = max(rnorm_py, rnorm_mat) / (min(rnorm_py, rnorm_mat) + 1e-10)

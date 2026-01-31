@@ -436,7 +436,7 @@ def _norm_l12_project(g, x, weights, tau):
 
     idx = xa < np.spacing(1)
     xc = oneprojector(xa, weights, tau)
-    xc = xc / xa
+    xc[~idx] = xc[~idx] / xa[~idx]
     xc[idx] = 0
     xx = spdiags(xc, 0, m, m) * xx
     return xx.flatten()
