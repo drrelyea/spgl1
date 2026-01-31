@@ -59,12 +59,12 @@ def test_spgl1_simple(octave, random_problem):
     # Check convergence - just verify we got a status code
     # Exit statuses: 1=root, 2=BP, 3=LS, 4=optimal, 5=maxIter, 6=linesearch,
     # 7=suboptimal BP, 8=maxMatvec, 9=maxTime, 10=inaccurate projection
-    stat = int(np.asarray(info_mat['stat']).flat[0])
+    stat = np.asarray(info_mat['stat']).flatten()[0].item()
     assert 1 <= stat <= 10, f"Invalid exit status: {stat}"
 
     # Just verify we got numerical results
     # (not testing convergence quality here, just interface)
-    rnorm = float(np.asarray(info_mat['rNorm']).flat[0])
+    rnorm = np.asarray(info_mat['rNorm']).flatten()[0].item()
     assert np.isfinite(rnorm), f"Residual is not finite: {rnorm}"
 
 

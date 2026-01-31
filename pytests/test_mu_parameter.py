@@ -133,7 +133,7 @@ class TestMuConvergence:
 
         # Both should iterate
         assert info_py['niters'] > 0, "Python didn't iterate"
-        iter_mat = int(np.asarray(info_mat['iter']).flat[0])
+        iter_mat = np.asarray(info_mat['iter']).flatten()[0].item()
         assert iter_mat > 0, "MATLAB didn't iterate"
 
         # Both should find solutions with similar sparsity
@@ -169,7 +169,7 @@ class TestMuConvergence:
 
         # Get residual norms
         rnorm_py = info_py['rnorm']
-        rnorm_mat = float(np.asarray(info_mat['rNorm']).flat[0])
+        rnorm_mat = np.asarray(info_mat['rNorm']).flatten()[0].item()
 
         # With mu > 0, rNorm should be augmented residual:
         # rNorm = sqrt(||Ax-b||^2 + mu*||x||^2)
@@ -381,8 +381,8 @@ class TestFindLambdaStar:
         result = octave("findLambdaStar", z, w, tau, mu, nargout=2, timeout=10)
         assert result['success'], f"Octave failed: {result.get('error')}"
 
-        lambda_mat = float(result['outputs'][0])
-        obj_mat = float(result['outputs'][1])
+        lambda_mat = np.asarray(result['outputs'][0]).flatten()[0].item()
+        obj_mat = np.asarray(result['outputs'][1]).flatten()[0].item()
 
         # Compare results
         np.testing.assert_allclose(lambda_py, lambda_mat, rtol=1e-10,
