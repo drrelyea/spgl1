@@ -263,5 +263,133 @@ class TestMuEdgeCases:
             "Heavy regularization should shrink solution"
 
 
+class TestFindLambdaStar:
+    """Test the _find_lambda_star helper function for dual computation with mu > 0."""
+
+    def test_tau_zero_returns_max_ratio(self):
+        """When tau=0, lambda_star should be max(z/w)."""
+        from spgl1.spgl1 import _find_lambda_star
+
+        z = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        w = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
+        tau = 0.0
+        mu = 0.1
+
+        obj, lambda_star = _find_lambda_star(z, w, tau, mu)
+
+        # When tau=0, lambda_star = max(z/w) = 5.0
+        assert lambda_star == 5.0
+        # Objective should be 0 when tau=0
+        assert obj == 0.0
+
+    def test_positive_tau_basic(self):
+        """Test basic case with positive tau."""
+        from spgl1.spgl1 import _find_lambda_star
+
+        z = np.array([1.0, 2.0, 3.0])
+        w = np.array([1.0, 1.0, 1.0])
+        tau = 1.0
+        mu = 1.0
+
+        obj, lambda_star = _find_lambda_star(z, w, tau, mu)
+
+        # Verify objective is non-negative
+        assert obj >= 0.0
+        # Verify lambda_star is non-negative
+        assert lambda_star >= 0.0
+
+        # Verify objective matches expected formula
+        c = np.maximum(z - w * lambda_star, 0.0)
+        expected_obj = tau * lambda_star + (1.0 / (2.0 * mu)) * np.dot(c, c)
+        np.testing.assert_allclose(obj, expected_obj, rtol=1e-10)
+
+    def test_weighted_case(self):
+        """Test with non-uniform weights."""
+        from spgl1.spgl1 import _find_lambda_star
+
+        z = np.array([1.0, 2.0, 3.0, 4.0])
+        w = np.array([0.5, 1.0, 1.5, 2.0])
+        tau = 2.0
+        mu = 0.5
+
+        obj, lambda_star = _find_lambda_star(z, w, tau, mu)
+
+        # Verify objective matches expected formula
+        c = np.maximum(z - w * lambda_star, 0.0)
+        expected_obj = tau * lambda_star + (1.0 / (2.0 * mu)) * np.dot(c, c)
+        np.testing.assert_allclose(obj, expected_obj, rtol=1e-10)
+
+    def test_large_tau_gives_small_lambda(self):
+        """Large tau should encourage smaller lambda (more regularization)."""
+        from spgl1.spgl1 import _find_lambda_star
+
+        z = np.array([1.0, 2.0, 3.0])
+        w = np.ones(3)
+        mu = 1.0
+
+        _, lambda_small_tau = _find_lambda_star(z, w, tau=0.1, mu=mu)
+        _, lambda_large_tau = _find_lambda_star(z, w, tau=10.0, mu=mu)
+
+        # Larger tau should give smaller lambda
+        assert lambda_large_tau < lambda_small_tau
+
+    def test_small_mu_behavior(self):
+        """Small mu makes quadratic penalty dominate, pushing lambda toward max(z/w).
+
+        The objective is: tau*lambda + (1/(2*mu))*||[z - lambda*w]_+||^2
+
+        When mu is small, the (1/(2*mu)) term is large, so the quadratic penalty
+        dominates. To minimize ||[z - lambda*w]_+||^2, lambda should be large
+        (approaching max(z/w)) so that z - lambda*w <= 0 for all components.
+
+        When mu is large, the tau*lambda term dominates, pushing lambda toward 0.
+        """
+        from spgl1.spgl1 import _find_lambda_star
+
+        z = np.array([1.0, 2.0, 3.0])
+        w = np.ones(3)
+        tau = 1.0
+        max_ratio = np.max(z / w)  # = 3.0
+
+        _, lambda_small_mu = _find_lambda_star(z, w, tau, mu=0.01)
+        _, lambda_large_mu = _find_lambda_star(z, w, tau, mu=10.0)
+
+        # Small mu: lambda should be closer to max(z/w) = 3.0
+        # Large mu: lambda should be closer to 0
+        assert lambda_small_mu > lambda_large_mu, \
+            f"Small mu should give larger lambda: {lambda_small_mu} vs {lambda_large_mu}"
+
+        # With very small mu, lambda should approach max(z/w)
+        assert lambda_small_mu > 0.9 * max_ratio, \
+            f"With small mu, lambda should be close to max(z/w)={max_ratio}, got {lambda_small_mu}"
+
+    @pytest.mark.matlab
+    def test_matches_octave(self, octave):
+        """Test that Python _find_lambda_star matches MATLAB findLambdaStar."""
+        from spgl1.spgl1 import _find_lambda_star
+
+        np.random.seed(400)
+        z = np.abs(np.random.randn(20))
+        w = np.abs(np.random.randn(20)) + 0.1  # Ensure positive weights
+        tau = 2.0
+        mu = 0.5
+
+        # Python version
+        obj_py, lambda_py = _find_lambda_star(z, w, tau, mu)
+
+        # MATLAB version
+        result = octave("findLambdaStar", z, w, tau, mu, nargout=2, timeout=10)
+        assert result['success'], f"Octave failed: {result.get('error')}"
+
+        lambda_mat = float(result['outputs'][0])
+        obj_mat = float(result['outputs'][1])
+
+        # Compare results
+        np.testing.assert_allclose(lambda_py, lambda_mat, rtol=1e-10,
+                                   err_msg="lambda_star differs from MATLAB")
+        np.testing.assert_allclose(obj_py, obj_mat, rtol=1e-10,
+                                   err_msg="objective differs from MATLAB")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-m", "matlab"])
