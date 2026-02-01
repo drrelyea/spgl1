@@ -63,6 +63,9 @@ jax = [
 torch = [
     "torch >= 2.0.0",
 ]
+numba = [
+    "numba >= 0.56.0",
+]
 
 [tool.setuptools.packages.find]
 exclude = ["pytests"]
