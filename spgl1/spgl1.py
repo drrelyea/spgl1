@@ -1359,8 +1359,8 @@ def spgl1(
         else:
             hybrid_support = xabs >= 1e-9  # Boundary
         hybrid_H = None
-        hybrid_sqrt1 = None
-        hybrid_sqrt2 = None
+        hybrid_sqrt_recip = None
+        hybrid_sqrt_ratio = None
         flag_use_hessian = False
     else:
         flag_use_hessian = False
@@ -1661,8 +1661,8 @@ def spgl1(
                         d_trans = product_b(
                             hybrid_signs * d[hybrid_support],
                             1,
-                            hybrid_sqrt1,
-                            hybrid_sqrt2,
+                            hybrid_sqrt_recip,
+                            hybrid_sqrt_ratio,
                         )
 
                         # If ||dTrans|| is tiny, direction is (near) orthogonal to the face
@@ -1680,7 +1680,7 @@ def spgl1(
                             # Convert to global domain
                             d = np.zeros(n)
                             d_support = hybrid_signs * product_b(
-                                d_quasi, 0, hybrid_sqrt1, hybrid_sqrt2
+                                d_quasi, 0, hybrid_sqrt_recip, hybrid_sqrt_ratio
                             )
                             d[hybrid_support] = d_support
 
@@ -1950,8 +1950,8 @@ def spgl1(
 
                     # Compute sqrt vectors if needed
                     if np.any(hybrid_support):
-                        if hybrid_sqrt1 is None or len(hybrid_sqrt1) != n:
-                            hybrid_sqrt1, hybrid_sqrt2 = compute_sqrt_vectors(n)
+                        if hybrid_sqrt_recip is None or len(hybrid_sqrt_recip) != n:
+                            hybrid_sqrt_recip, hybrid_sqrt_ratio = compute_sqrt_vectors(n)
 
                     # Update Hessian approximation
                     s_iter = x - xold
@@ -1964,20 +1964,20 @@ def spgl1(
                             product_b(
                                 hybrid_signs * s_iter[hybrid_support],
                                 1,
-                                hybrid_sqrt1,
-                                hybrid_sqrt2,
+                                hybrid_sqrt_recip,
+                                hybrid_sqrt_ratio,
                             ),
                             product_b(
                                 hybrid_signs * gold[hybrid_support],
                                 1,
-                                hybrid_sqrt1,
-                                hybrid_sqrt2,
+                                hybrid_sqrt_recip,
+                                hybrid_sqrt_ratio,
                             ),
                             product_b(
                                 hybrid_signs * g[hybrid_support],
                                 1,
-                                hybrid_sqrt1,
-                                hybrid_sqrt2,
+                                hybrid_sqrt_recip,
+                                hybrid_sqrt_ratio,
                             ),
                         )
 

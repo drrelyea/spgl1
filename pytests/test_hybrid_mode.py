@@ -516,58 +516,58 @@ class TestProductB:
     """Test productB transformation."""
 
     def test_forward_dimensions(self):
-        """Forward: d -> d+1."""
-        d = 10
-        sqrt1, sqrt2 = compute_sqrt_vectors(d)
-        x = np.random.randn(d)
-        y = product_b(x, 0, sqrt1, sqrt2)
-        assert y.shape == (d + 1,)
-        assert np.all(np.isfinite(y))
+        """Forward: support_size -> support_size+1."""
+        support_size = 10
+        sqrt_recip, sqrt_ratio = compute_sqrt_vectors(support_size)
+        input_vec = np.random.randn(support_size)
+        output_vec = product_b(input_vec, 0, sqrt_recip, sqrt_ratio)
+        assert output_vec.shape == (support_size + 1,)
+        assert np.all(np.isfinite(output_vec))
 
     def test_transpose_dimensions(self):
-        """Transpose: d+1 -> d."""
-        d = 10
-        sqrt1, sqrt2 = compute_sqrt_vectors(d)
-        x = np.random.randn(d + 1)
-        y = product_b(x, 1, sqrt1, sqrt2)
-        assert y.shape == (d,)
-        assert np.all(np.isfinite(y))
+        """Transpose: support_size+1 -> support_size."""
+        support_size = 10
+        sqrt_recip, sqrt_ratio = compute_sqrt_vectors(support_size)
+        input_vec = np.random.randn(support_size + 1)
+        output_vec = product_b(input_vec, 1, sqrt_recip, sqrt_ratio)
+        assert output_vec.shape == (support_size,)
+        assert np.all(np.isfinite(output_vec))
 
     def test_adjoint_property(self):
         """<Bx, y> == <x, B'y> (adjoint property)."""
         np.random.seed(300)
-        d = 20
-        sqrt1, sqrt2 = compute_sqrt_vectors(d)
+        support_size = 20
+        sqrt_recip, sqrt_ratio = compute_sqrt_vectors(support_size)
 
-        x = np.random.randn(d)
-        y = np.random.randn(d + 1)
+        input_vec = np.random.randn(support_size)
+        other_vec = np.random.randn(support_size + 1)
 
-        Bx = product_b(x, 0, sqrt1, sqrt2)
-        Bty = product_b(y, 1, sqrt1, sqrt2)
+        forward_result = product_b(input_vec, 0, sqrt_recip, sqrt_ratio)
+        transpose_result = product_b(other_vec, 1, sqrt_recip, sqrt_ratio)
 
-        lhs = Bx @ y
-        rhs = x @ Bty
+        lhs = forward_result @ other_vec
+        rhs = input_vec @ transpose_result
         np.testing.assert_allclose(lhs, rhs, rtol=1e-12)
 
     def test_orthogonality(self):
         """B'*B should be identity (orthogonal transformation)."""
         np.random.seed(301)
-        d = 15
-        sqrt1, sqrt2 = compute_sqrt_vectors(d)
+        support_size = 15
+        sqrt_recip, sqrt_ratio = compute_sqrt_vectors(support_size)
 
         # Build B'B explicitly via unit vectors
-        BtB = np.zeros((d, d))
-        for j in range(d):
-            ej = np.zeros(d)
-            ej[j] = 1.0
-            Bej = product_b(ej, 0, sqrt1, sqrt2)
-            for i in range(d):
-                ei = np.zeros(d)
-                ei[i] = 1.0
-                Bei = product_b(ei, 0, sqrt1, sqrt2)
-                BtB[i, j] = Bei @ Bej
+        btb_matrix = np.zeros((support_size, support_size))
+        for col_idx in range(support_size):
+            unit_col = np.zeros(support_size)
+            unit_col[col_idx] = 1.0
+            b_unit_col = product_b(unit_col, 0, sqrt_recip, sqrt_ratio)
+            for row_idx in range(support_size):
+                unit_row = np.zeros(support_size)
+                unit_row[row_idx] = 1.0
+                b_unit_row = product_b(unit_row, 0, sqrt_recip, sqrt_ratio)
+                btb_matrix[row_idx, col_idx] = b_unit_row @ b_unit_col
 
-        np.testing.assert_allclose(BtB, np.eye(d), atol=1e-13)
+        np.testing.assert_allclose(btb_matrix, np.eye(support_size), atol=1e-13)
 
 
 # =========================================================================
