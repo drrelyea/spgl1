@@ -498,10 +498,10 @@ def save_results_csv(results: list[BenchmarkResult], filepath: str) -> None:
                 r.function_name,
                 r.size_category,
                 r.n,
-                r.median_time_ms,
-                r.std_time_ms,
-                r.min_time_ms,
-                r.max_time_ms,
+                f"{r.median_time_ms:.4f}",
+                f"{r.std_time_ms:.4f}",
+                f"{r.min_time_ms:.4f}",
+                f"{r.max_time_ms:.4f}",
                 r.num_runs,
             ])
 

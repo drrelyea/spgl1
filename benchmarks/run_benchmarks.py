@@ -172,11 +172,11 @@ def generate_comparison_report(
                     "name": key[0],
                     "size": key[1],
                     "n": py.get("n"),
-                    "python_ms": py_time,
-                    "octave_ms": oct_time,
-                    "speedup": speedup,
+                    "python_ms": round(py_time, 4),
+                    "octave_ms": round(oct_time, 4),
+                    "speedup": round(speedup, 2),
                     "python_faster": speedup > 1.0,
-                    "diff_percent": (oct_time - py_time) / oct_time * 100,
+                    "diff_percent": round((oct_time - py_time) / oct_time * 100, 1),
                 })
 
     # Save comparison results

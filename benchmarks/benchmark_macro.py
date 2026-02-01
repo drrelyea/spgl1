@@ -529,12 +529,12 @@ def save_results_csv(results: list[MacroBenchmarkResult], filepath: str) -> None
                 r.m,
                 r.n,
                 r.sparsity,
-                r.wall_time_ms,
+                f"{r.wall_time_ms:.2f}",
                 r.num_iterations,
                 r.num_matvec_A,
                 r.num_matvec_At,
-                r.final_objective,
-                r.final_residual,
+                f"{r.final_objective:.6f}",
+                f"{r.final_residual:.6f}",
                 r.exit_flag,
             ])
 
