@@ -31,93 +31,100 @@ except ImportError:
 
 @jit(nopython=True)
 def _product_b_forward(
-    x: FloatArray,
-    sqrt1: FloatArray,
-    sqrt2: FloatArray,
+    input_vector: FloatArray,
+    sqrt_recip_coeffs: FloatArray,
+    sqrt_ratio_coeffs: FloatArray,
 ) -> FloatArray:
-    """Forward mode: d -> d+1 dimensions.
+    """Forward mode: support_size -> support_size+1 dimensions.
 
     Computes:
-        y[0] = t (accumulated value)
-        y[i] = t + sqrt2[i-1] * x[i-1] for i=1..d
+        output_vector[0] = neg_weighted_cumsum (negative weighted cumulative sum)
+        output_vector[idx] = neg_weighted_cumsum + sqrt_ratio_coeffs[idx-1] * input_vector[idx-1]
+            for idx=1..support_size
 
-    where t accumulates backward: t -= sqrt1[i] * x[i]
+    where neg_weighted_cumsum updates backward:
+        neg_weighted_cumsum -= sqrt_recip_coeffs[idx] * input_vector[idx]
 
     Parameters
     ----------
-    x : ndarray
-        Input vector (d,)
-    sqrt1 : ndarray
-        sqrt(1 / (i * (i+1))) for i=1..d
-    sqrt2 : ndarray
-        sqrt(i / (i+1)) for i=1..d
+    input_vector : ndarray
+        Input vector (support_size,)
+    sqrt_recip_coeffs : ndarray
+        sqrt(1 / (i * (i+1))) for i=1..support_size
+    sqrt_ratio_coeffs : ndarray
+        sqrt(i / (i+1)) for i=1..support_size
 
     Returns
     -------
-    y : ndarray
-        Transformed vector (d+1,)
+    output_vector : ndarray
+        Transformed vector (support_size+1,)
     """
-    d: int = len(x)
-    y: FloatArray = np.zeros(d + 1)
+    support_size: int = len(input_vector)
+    output_vector: FloatArray = np.zeros(support_size + 1)
 
-    t: float = 0.0
-    # Process in reverse order: d-1, d-2, ..., 1, 0
-    for i in range(d - 1, -1, -1):
-        xi: float = x[i]
-        y[i + 1] = t + sqrt2[i] * xi
-        t -= sqrt1[i] * xi
+    neg_weighted_cumsum: float = 0.0
+    # Process in reverse order: support_size-1, support_size-2, ..., 1, 0
+    for idx in range(support_size - 1, -1, -1):
+        input_element: float = input_vector[idx]
+        output_vector[idx + 1] = neg_weighted_cumsum + sqrt_ratio_coeffs[idx] * input_element
+        neg_weighted_cumsum -= sqrt_recip_coeffs[idx] * input_element
 
-    y[0] = t
-    return y
+    output_vector[0] = neg_weighted_cumsum
+    return output_vector
 
 
 @jit(nopython=True)
 def _product_b_transpose(
-    x: FloatArray,
-    sqrt1: FloatArray,
-    sqrt2: FloatArray,
+    input_vector: FloatArray,
+    sqrt_recip_coeffs: FloatArray,
+    sqrt_ratio_coeffs: FloatArray,
 ) -> FloatArray:
-    """Transpose mode: d+1 -> d dimensions.
+    """Transpose mode: support_size+1 -> support_size dimensions.
 
     Computes:
-        y[i] = sqrt1[i] * t + sqrt2[i] * x[i+1] for i=0..d-1
+        output_vector[idx] = sqrt_recip_coeffs[idx] * neg_cumsum
+                           + sqrt_ratio_coeffs[idx] * input_vector[idx+1]
+            for idx=0..support_size-1
 
-    where t accumulates forward: t -= x[i]
+    where neg_cumsum updates forward: neg_cumsum -= input_vector[idx]
 
     Parameters
     ----------
-    x : ndarray
-        Input vector (d+1,)
-    sqrt1 : ndarray
-        sqrt(1 / (i * (i+1))) for i=1..d
-    sqrt2 : ndarray
-        sqrt(i / (i+1)) for i=1..d
+    input_vector : ndarray
+        Input vector (support_size+1,)
+    sqrt_recip_coeffs : ndarray
+        sqrt(1 / (i * (i+1))) for i=1..support_size
+    sqrt_ratio_coeffs : ndarray
+        sqrt(i / (i+1)) for i=1..support_size
 
     Returns
     -------
-    y : ndarray
-        Transformed vector (d,)
+    output_vector : ndarray
+        Transformed vector (support_size,)
     """
-    d: int = len(x) - 1
-    y: FloatArray = np.zeros(d)
+    support_size: int = len(input_vector) - 1
+    output_vector: FloatArray = np.zeros(support_size)
 
-    t: float = 0.0
-    xi: float = x[0]
+    neg_cumsum: float = 0.0
+    input_element: float = input_vector[0]
 
-    # Process in forward order: 0, 1, 2, ..., d-1
-    for i in range(d):
-        t -= xi
-        xi = x[i + 1]
-        y[i] = sqrt1[i] * t + sqrt2[i] * xi
+    # Process in forward order: 0, 1, 2, ..., support_size-1
+    for idx in range(support_size):
+        neg_cumsum -= input_element
+        input_element = input_vector[idx + 1]
+        output_vector[idx] = (
+            sqrt_recip_coeffs[idx] * neg_cumsum
+            + sqrt_ratio_coeffs[idx] * input_element
+        )
 
-    return y
+    return output_vector
 
 
 def product_b(
-    x: FloatArray,
-    transpose: int,
-    sqrt1: FloatArray,
-    sqrt2: FloatArray,
+    input_vector: FloatArray,
+    is_transpose: int,
+    sqrt_recip_coeffs: FloatArray,
+    sqrt_ratio_coeffs: FloatArray,
 ) -> FloatArray:
     """Coordinate transformation for L-BFGS support set operations.
 
@@ -126,30 +133,30 @@ def product_b(
     - Global domain: Full vector with support set
     - Coefficient space: Transformed coordinates for quasi-Newton updates
 
-    The transformation uses precomputed values sqrt1 and sqrt2 that depend
-    on the support set size.
+    The transformation uses precomputed values sqrt_recip_coeffs and
+    sqrt_ratio_coeffs that depend on the support set size.
 
     Parameters
     ----------
-    x : ndarray
+    input_vector : ndarray
         Input vector
-        - If transpose=0 (forward): d-vector
-        - If transpose=1 (transpose): (d+1)-vector
-    transpose : int
+        - If is_transpose=0 (forward): support_size-vector
+        - If is_transpose=1 (transpose): (support_size+1)-vector
+    is_transpose : int
         Transformation mode:
-        - 0: Forward mode (d -> d+1)
-        - 1: Transpose mode (d+1 -> d)
-    sqrt1 : ndarray
-        Precomputed sqrt(1 / (i * (i+1))) for i=1..d
-    sqrt2 : ndarray
-        Precomputed sqrt(i / (i+1)) for i=1..d
+        - 0: Forward mode (support_size -> support_size+1)
+        - 1: Transpose mode (support_size+1 -> support_size)
+    sqrt_recip_coeffs : ndarray
+        Precomputed sqrt(1 / (i * (i+1))) for i=1..support_size
+    sqrt_ratio_coeffs : ndarray
+        Precomputed sqrt(i / (i+1)) for i=1..support_size
 
     Returns
     -------
-    y : ndarray
+    output_vector : ndarray
         Transformed vector
-        - If transpose=0: (d+1)-vector
-        - If transpose=1: d-vector
+        - If is_transpose=0: (support_size+1)-vector
+        - If is_transpose=1: support_size-vector
 
     Notes
     -----
@@ -162,39 +169,39 @@ def product_b(
 
     Examples
     --------
-    >>> d = 10
-    >>> x = np.random.randn(d)
-    >>> sqrt1, sqrt2 = compute_sqrt_vectors(d)
-    >>> y = product_b(x, 0, sqrt1, sqrt2)  # Forward
-    >>> x_back = product_b(y, 1, sqrt1, sqrt2)  # Transpose
+    >>> support_size = 10
+    >>> input_vec = np.random.randn(support_size)
+    >>> sqrt_recip, sqrt_ratio = compute_sqrt_vectors(support_size)
+    >>> output_vec = product_b(input_vec, 0, sqrt_recip, sqrt_ratio)  # Forward
+    >>> back_vec = product_b(output_vec, 1, sqrt_recip, sqrt_ratio)  # Transpose
     """
-    x = np.asarray(x, dtype=float)
-    sqrt1 = np.asarray(sqrt1, dtype=float)
-    sqrt2 = np.asarray(sqrt2, dtype=float)
+    input_vector = np.asarray(input_vector, dtype=float)
+    sqrt_recip_coeffs = np.asarray(sqrt_recip_coeffs, dtype=float)
+    sqrt_ratio_coeffs = np.asarray(sqrt_ratio_coeffs, dtype=float)
 
-    if transpose == 0:
-        return _product_b_forward(x, sqrt1, sqrt2)
+    if is_transpose == 0:
+        return _product_b_forward(input_vector, sqrt_recip_coeffs, sqrt_ratio_coeffs)
     else:
-        return _product_b_transpose(x, sqrt1, sqrt2)
+        return _product_b_transpose(input_vector, sqrt_recip_coeffs, sqrt_ratio_coeffs)
 
 
-def compute_sqrt_vectors(d: int) -> tuple[FloatArray, FloatArray]:
-    """Compute sqrt1 and sqrt2 vectors for productB transformation.
+def compute_sqrt_vectors(support_size: int) -> tuple[FloatArray, FloatArray]:
+    """Compute sqrt_recip_coeffs and sqrt_ratio_coeffs for productB transformation.
 
     These vectors are used by product_b() for efficient coordinate
-    transformations. They only depend on the support set size d.
+    transformations. They only depend on the support set size.
 
     Parameters
     ----------
-    d : int
+    support_size : int
         Support set size (number of active variables)
 
     Returns
     -------
-    sqrt1 : ndarray
-        sqrt(1 / (i * (i+1))) for i=1..d, shape (d,)
-    sqrt2 : ndarray
-        sqrt(i / (i+1)) for i=1..d, shape (d,)
+    sqrt_recip_coeffs : ndarray
+        sqrt(1 / (i * (i+1))) for i=1..support_size, shape (support_size,)
+    sqrt_ratio_coeffs : ndarray
+        sqrt(i / (i+1)) for i=1..support_size, shape (support_size,)
 
     Notes
     -----
@@ -207,13 +214,13 @@ def compute_sqrt_vectors(d: int) -> tuple[FloatArray, FloatArray]:
 
     Examples
     --------
-    >>> sqrt1, sqrt2 = compute_sqrt_vectors(5)
-    >>> sqrt1.shape
+    >>> sqrt_recip, sqrt_ratio = compute_sqrt_vectors(5)
+    >>> sqrt_recip.shape
     (5,)
-    >>> sqrt2.shape
+    >>> sqrt_ratio.shape
     (5,)
     """
-    i: FloatArray = np.arange(1, d + 1, dtype=float)
-    sqrt1: FloatArray = np.sqrt(1.0 / (i * (i + 1.0)))
-    sqrt2: FloatArray = np.sqrt(i / (i + 1.0))
-    return sqrt1, sqrt2
+    indices: FloatArray = np.arange(1, support_size + 1, dtype=float)
+    sqrt_recip_coeffs: FloatArray = np.sqrt(1.0 / (indices * (indices + 1.0)))
+    sqrt_ratio_coeffs: FloatArray = np.sqrt(indices / (indices + 1.0))
+    return sqrt_recip_coeffs, sqrt_ratio_coeffs

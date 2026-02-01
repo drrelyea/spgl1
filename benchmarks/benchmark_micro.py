@@ -158,7 +158,7 @@ def generate_test_data(size: ProblemSize, seed: int = 42) -> dict:
     step = 0.1
 
     # For productB
-    sqrt1, sqrt2 = compute_sqrt_vectors(n)
+    sqrt_recip, sqrt_ratio = compute_sqrt_vectors(n)
 
     # For group norms (g groups of size m/g each, assuming n divisible)
     g_groups = min(10, n // 10)  # Number of groups
@@ -181,8 +181,8 @@ def generate_test_data(size: ProblemSize, seed: int = 42) -> dict:
         "g2": g2,
         "p": p,
         "step": step,
-        "sqrt1": sqrt1,
-        "sqrt2": sqrt2,
+        "sqrt_recip": sqrt_recip,
+        "sqrt_ratio": sqrt_ratio,
         "g_groups": g_groups,
         "z": z,
         "w": w,
@@ -303,15 +303,15 @@ def bench_lbfgs_update(data: dict) -> tuple:
 
 def bench_product_b_forward(data: dict) -> tuple:
     """Benchmark productB forward mode."""
-    return (product_b, (data["x"], 0, data["sqrt1"], data["sqrt2"]))
+    return (product_b, (data["x"], 0, data["sqrt_recip"], data["sqrt_ratio"]))
 
 
 def bench_product_b_transpose(data: dict) -> tuple:
     """Benchmark productB transpose mode."""
     # Need d+1 dimensional input for transpose
     x_ext = np.concatenate([[0.0], data["x"]])
-    sqrt1, sqrt2 = compute_sqrt_vectors(data["n"])
-    return (product_b, (x_ext, 1, sqrt1, sqrt2))
+    sqrt_recip, sqrt_ratio = compute_sqrt_vectors(data["n"])
+    return (product_b, (x_ext, 1, sqrt_recip, sqrt_ratio))
 
 
 def bench_compute_sqrt_vectors(data: dict) -> tuple:
