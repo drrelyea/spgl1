@@ -1339,7 +1339,7 @@ def spgl1(
     time_matprod += time.time() - start_time_matvec
     f = float(np.linalg.norm(r) ** 2 / 2.0)
     if mu > 0:
-        f = f + (mu / 2.0) * float(np.dot(x, x))
+        f = f + (mu / 2.0) * float(np.real(np.dot(np.conj(x), x)))
         g = g + mu * x
     nprodA += 1
     nprodAt += 1
@@ -1393,10 +1393,10 @@ def spgl1(
             rnorm = float(np.sqrt(2.0 * f))
 
         # Compute dual objective
-        rtr = float(np.dot(np.conj(r), r))
+        rtr = float(np.real(np.dot(np.conj(r), r)))
         if mu == 0:
             # Classic method: f_dual = r'*b - tau*||g|| - ||r||^2/2
-            f_dual = float(np.dot(np.conj(r), b)) - tau * gnorm - rtr / 2.0
+            f_dual = float(np.real(np.dot(np.conj(r), b))) - tau * gnorm - rtr / 2.0
         else:
             # For mu > 0, use findLambdaStar for proper dual computation
             # Compute z = |mu*x - g| = |A'*r| (since g = -A'*r + mu*x)
@@ -1409,7 +1409,7 @@ def spgl1(
             else:
                 weights_full = weights
             obj_value, _ = _find_lambda_star(z, weights_full, tau, mu)
-            f_dual = float(np.dot(np.conj(r), b)) - rtr / 2.0 - obj_value
+            f_dual = float(np.real(np.dot(np.conj(r), b))) - rtr / 2.0 - obj_value
 
         # Track best dual objective
         if f_dual > f_dual_max:
@@ -1418,7 +1418,7 @@ def spgl1(
         else:
             f_dual = f_dual_max
 
-        gap = float(np.dot(np.conj(r), r - b)) + tau * gnorm
+        gap = float(np.real(np.dot(np.conj(r), r - b))) + tau * gnorm
         rgap = abs(gap) / max(1.0, f)
         aerror1 = rnorm - sigma
         aerror2 = f - sigma**2.0 / 2.0
@@ -1492,7 +1492,7 @@ def spgl1(
                     ratio = 0.0
 
                 # Dual objective determines candidate tau values
-                aerror_dual = float(np.dot(np.conj(b), r)) - tau * gnorm - rnorm * sigma
+                aerror_dual = float(np.real(np.dot(np.conj(b), r))) - tau * gnorm - rnorm * sigma
                 tau_new = max(tau, tau + aerror_dual / gnorm)
 
                 # Check optimality
@@ -1534,7 +1534,7 @@ def spgl1(
 
                     f = float(np.linalg.norm(r) ** 2 / 2.0)
                     if mu > 0:
-                        f = f + (mu / 2.0) * float(np.dot(x, x))
+                        f = f + (mu / 2.0) * float(np.real(np.dot(np.conj(x), x)))
                         g = g + mu * x
                     nprodA += 1
                     nprodAt += 1
@@ -1756,7 +1756,7 @@ def spgl1(
                 start_time_project = time.time()
                 dx = project(x - gstep * g, weights, tau) - x
                 time_project += time.time() - start_time_project
-                gtd = float(np.dot(np.conj(g), dx))
+                gtd = float(np.real(np.dot(np.conj(g), dx)))
                 f, x, r, niter_line, lnerr, time_matprod_line = _spg_line(
                     f, x, dx, gtd, max(last_fv), A, b, mu
                 )
@@ -1866,8 +1866,8 @@ def spgl1(
                 nprodAt += 1
                 s = x - xold
                 y = g - gold
-                sts = float(np.dot(np.conj(s), s))
-                sty = float(np.dot(np.conj(s), y))
+                sts = float(np.real(np.dot(np.conj(s), s)))
+                sty = float(np.real(np.dot(np.conj(s), y)))
                 if sty <= 0:
                     gstep = step_max
                 else:
@@ -2020,7 +2020,7 @@ def spgl1(
         if mu == 0:
             rnorm = float(np.linalg.norm(r))
         else:
-            rnorm = float(np.sqrt(np.dot(r, r) + mu * np.dot(x, x)))
+            rnorm = float(np.sqrt(np.real(np.dot(np.conj(r), r) + mu * np.dot(np.conj(x), x))))
         nprodA += 1
         nprodAt += 1
 
