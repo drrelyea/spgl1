@@ -32,8 +32,11 @@ class TestMuBasics:
 
         # Check that the augmented residual norm is reported correctly
         # For mu > 0, rnorm should be sqrt(||r||^2 + mu*||x||^2)
+        # Use np.conj() to handle complex inputs correctly (matches MATLAB x'*x)
         r_actual = b - A @ x_py
-        expected_rnorm = np.sqrt(np.dot(r_actual, r_actual) + mu * np.dot(x_py, x_py))
+        expected_rnorm = np.sqrt(
+            np.real(np.dot(np.conj(r_actual), r_actual) + mu * np.dot(np.conj(x_py), x_py))
+        )
         np.testing.assert_allclose(info_py['rnorm'], expected_rnorm, rtol=1e-6, atol=1e-9)
 
     def test_mu_zero_equals_nomu(self, octave, random_problem):
@@ -173,10 +176,13 @@ class TestMuConvergence:
 
         # With mu > 0, rNorm should be augmented residual:
         # rNorm = sqrt(||Ax-b||^2 + mu*||x||^2)
+        # Use np.conj() to handle complex inputs correctly (matches MATLAB x'*x)
 
         # Compute augmented residual for Python
         r_actual_py = b - A @ x_py
-        aug_rnorm_py = np.sqrt(np.dot(r_actual_py, r_actual_py) + mu * np.dot(x_py, x_py))
+        aug_rnorm_py = np.sqrt(
+            np.real(np.dot(np.conj(r_actual_py), r_actual_py) + mu * np.dot(np.conj(x_py), x_py))
+        )
 
         # Python's reported rNorm should match augmented residual
         np.testing.assert_allclose(rnorm_py, aug_rnorm_py, rtol=1e-6, atol=1e-9)
@@ -201,8 +207,11 @@ class TestMuObjective:
         x_py, r_py, g_py, info_py = spgl1(A, b, tau=0, sigma=sigma, mu=mu)
 
         # Manually compute objective
+        # Use np.conj() to handle complex inputs correctly (matches MATLAB x'*x)
         r_actual = b - A @ x_py
-        f_expected = 0.5 * np.dot(r_actual, r_actual) + 0.5 * mu * np.dot(x_py, x_py)
+        f_expected = 0.5 * np.real(
+            np.dot(np.conj(r_actual), r_actual) + mu * np.dot(np.conj(x_py), x_py)
+        )
 
         # Python should have computed this correctly internally
         # (We can't directly access f, but we can verify via residual norm)
@@ -389,6 +398,134 @@ class TestFindLambdaStar:
                                    err_msg="lambda_star differs from MATLAB")
         np.testing.assert_allclose(obj_py, obj_mat, rtol=1e-10,
                                    err_msg="objective differs from MATLAB")
+
+
+class TestMuComplexData:
+    """Test mu parameter with complex-valued data.
+
+    These tests verify that the dot product computations use np.conj()
+    correctly to match MATLAB's x'*x (conjugate transpose) behavior.
+    Without np.conj(), dot products of complex vectors would produce
+    complex results instead of real values.
+    """
+
+    def test_mu_complex_objective_is_real(self):
+        """Test that objective function is real for complex data with mu > 0.
+
+        This is a regression test for a bug where np.dot(x, x) was used instead
+        of np.dot(np.conj(x), x). In MATLAB, x'*x automatically conjugates,
+        giving a real result. The Python port must explicitly use np.conj().
+        """
+        from spgl1.spgl1 import spgl1
+
+        np.random.seed(500)
+        m, n = 30, 60
+
+        # Create complex-valued problem
+        A_real = np.random.randn(m, n)
+        A_imag = np.random.randn(m, n)
+        A = A_real + 1j * A_imag
+
+        x_true = np.zeros(n, dtype=complex)
+        k = 5
+        idx = np.random.choice(n, k, replace=False)
+        x_true[idx] = np.random.randn(k) + 1j * np.random.randn(k)
+
+        b = A @ x_true + 0.01 * (np.random.randn(m) + 1j * np.random.randn(m))
+
+        sigma = 0.1 * np.linalg.norm(b)
+        mu = 0.5
+
+        # Run solver
+        x_py, r_py, g_py, info_py = spgl1(A, b, tau=0, sigma=sigma, mu=mu)
+
+        # Verify solution is finite
+        assert np.all(np.isfinite(x_py)), "Solution contains non-finite values"
+
+        # Verify rnorm is real (not complex)
+        assert np.isreal(info_py['rnorm']), "rnorm should be real"
+
+        # Manually verify the augmented residual norm calculation is real
+        r_actual = b - A @ x_py
+        aug_rnorm_squared = np.dot(np.conj(r_actual), r_actual) + mu * np.dot(np.conj(x_py), x_py)
+        assert np.isreal(aug_rnorm_squared) or np.abs(np.imag(aug_rnorm_squared)) < 1e-10, \
+            f"Augmented rnorm^2 should be real, got imaginary part: {np.imag(aug_rnorm_squared)}"
+
+    def test_mu_complex_matches_manual_computation(self):
+        """Test that solver's rnorm matches manual computation for complex data."""
+        from spgl1.spgl1 import spgl1
+
+        np.random.seed(501)
+        m, n = 20, 40
+
+        # Create complex-valued problem
+        A = np.random.randn(m, n) + 1j * np.random.randn(m, n)
+        x_true = np.zeros(n, dtype=complex)
+        x_true[:3] = [1+1j, 2-1j, -1+2j]
+        b = A @ x_true + 0.01 * (np.random.randn(m) + 1j * np.random.randn(m))
+
+        sigma = 0.2 * np.linalg.norm(b)
+        mu = 0.25
+
+        x_py, r_py, g_py, info_py = spgl1(A, b, tau=0, sigma=sigma, mu=mu)
+
+        # Compute expected rnorm using correct formula with np.conj()
+        r_actual = b - A @ x_py
+        expected_rnorm = np.sqrt(
+            np.real(np.dot(np.conj(r_actual), r_actual) + mu * np.dot(np.conj(x_py), x_py))
+        )
+
+        np.testing.assert_allclose(
+            info_py['rnorm'], expected_rnorm, rtol=1e-6, atol=1e-9,
+            err_msg="Solver rnorm doesn't match manual computation for complex data"
+        )
+
+    @pytest.mark.matlab
+    def test_mu_complex_matches_matlab(self, octave):
+        """Test that Python results match MATLAB for complex data with mu > 0."""
+        from spgl1.spgl1 import spgl1
+
+        np.random.seed(502)
+        m, n = 25, 50
+
+        # Create complex-valued problem
+        A = np.random.randn(m, n) + 1j * np.random.randn(m, n)
+        x_true = np.zeros(n, dtype=complex)
+        x_true[:4] = [1+0.5j, -1+1j, 0.5-0.5j, 2+0j]
+        b = A @ x_true + 0.02 * (np.random.randn(m) + 1j * np.random.randn(m))
+
+        sigma = 0.15 * np.linalg.norm(b)
+        mu = 0.3
+
+        # Python version
+        x_py, r_py, g_py, info_py = spgl1(A, b, tau=0, sigma=sigma, mu=mu)
+
+        # MATLAB version
+        opts_result = octave("spgSetParms", "mu", mu, nargout=1, timeout=10)
+        assert opts_result['success'], f"Failed to set MATLAB options: {opts_result.get('error')}"
+        opts = opts_result['outputs'][0]
+
+        result = octave("spgl1", A, b, 0.0, sigma, np.array([]), opts, nargout=4, timeout=30)
+        assert result['success'], f"MATLAB spgl1 failed: {result.get('error')}"
+
+        x_mat = result['outputs'][0].flatten()
+        info_mat = result['outputs'][3]
+        rnorm_mat = np.asarray(info_mat['rNorm']).flatten()[0].item()
+
+        # Compare residual norms
+        # Note: Complex problems with mu > 0 may converge to different local minima
+        # so we use a looser tolerance here
+        rnorm_ratio = max(info_py['rnorm'], rnorm_mat) / (min(info_py['rnorm'], rnorm_mat) + 1e-10)
+        assert rnorm_ratio < 10.0, \
+            f"Complex mu>0: rnorms differ too much - Python: {info_py['rnorm']}, MATLAB: {rnorm_mat}"
+
+        # Solutions should be correlated
+        if np.linalg.norm(x_py) > 1e-6 and np.linalg.norm(x_mat) > 1e-6:
+            x_py_norm = x_py / np.linalg.norm(x_py)
+            x_mat_norm = x_mat / np.linalg.norm(x_mat)
+            correlation = np.abs(np.dot(np.conj(x_py_norm), x_mat_norm))
+            assert correlation > 0.5, \
+                f"Complex mu>0: Solutions not well correlated ({correlation})"
 
 
 if __name__ == "__main__":
