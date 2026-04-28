@@ -1065,8 +1065,8 @@ def spgl1(
         if nnz_diff:
             nnz_niters = 0
         else:
-            nnz_niters += nnz_niters
-            if nnz_niters + 1 >= active_set_niters:
+            nnz_niters += 1
+            if nnz_niters  >= active_set_niters:
                 stat = EXIT_ACTIVE_SET
 
         # Single tau: Check if were optimal.
@@ -1229,10 +1229,10 @@ def spgl1(
                 dx = project(x - gstep * g, weights, tau) - x
                 time_project += time.time() - start_time_project
                 gtd = np.dot(np.conj(g), dx)
-                f, x, r, niter_line, lnerr, time_matprod = _spg_line(
+                f, x, r, niter_line, lnerr, time_matprod_line = _spg_line(
                     f, x, dx, gtd, max(last_fv), A, b
                 )
-                time_matprod += time_matprod
+                time_matprod += time_matprod_line
                 nprodA += niter_line + 1
                 nline_tot += niter_line
                 if nprodA + nprodAt > max_matvec:
