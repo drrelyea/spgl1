@@ -957,10 +957,10 @@ def spgl1(
         logger.warning("W: Subspace minimization disabled when variables are complex.")
         subspace_min = False
 
-    #% Pre-allocate iteration info vectors
-    xnorm1 = np.zeros(min(iter_lim + 1, _allocSize))
-    rnorm2 = np.zeros(min(iter_lim + 1, _allocSize))
-    lambdaa = np.zeros(min(iter_lim + 1, _allocSize))
+    # Info vectors
+    xnorm1 = []
+    rnorm2 = []
+    lambdaa = []
 
     # Log header.
     if verbosity >= 1:
@@ -1180,15 +1180,9 @@ def spgl1(
         subspace = False
 
         # Update history info
-        if niters > 0 and niters % _allocSize == 0:  # enlarge allocation
-            allocincrement = min(_allocSize, iter_lim - xnorm1.shape[0])
-            xnorm1 = np.hstack((xnorm1, np.zeros(allocincrement)))
-            rnorm2 = np.hstack((rnorm2, np.zeros(allocincrement)))
-            lambdaa = np.hstack((lambdaa, np.zeros(allocincrement)))
-
-        xnorm1[niters] = primal_norm(x, weights)
-        rnorm2[niters] = rnorm
-        lambdaa[niters] = gnorm
+        xnorm1 += primal_norm(x, weights)
+        rnorm2 += rnorm
+        lambdaa += gnorm
 
         if stat:
             break
@@ -1383,9 +1377,9 @@ def spgl1(
     info["time_matprod"] = time_matprod
     info["niters_lsqr"] = niters_lsqr
     info["time_total"] = time.time() - start_time
-    info["xnorm1"] = xnorm1[0:niters]
-    info["rnorm2"] = rnorm2[0:niters]
-    info["lambdaa"] = lambdaa[0:niters]
+    info["xnorm1"] = np.array(xnorm1)
+    info["rnorm2"] = np.array(rnorm2)
+    info["lambdaa"] = np.array(lambdaa)
 
     # Print final output.
     if verbosity >= 1:
