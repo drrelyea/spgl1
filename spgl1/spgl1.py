@@ -924,7 +924,7 @@ def spgl1(
     test_updatetau = False  # Previous step did not update tau
 
     # Determine initial x and see if problem is complex
-    realx = np.isreal(A).all() and np.isreal(b).all()
+    realx = np.asarray(np.isreal(A)).all() and np.asarray(np.isreal(b)).all()
     if x0 is None:
         x = np.zeros(n, dtype=b.dtype)
     else:
